@@ -2,159 +2,202 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>GHOST TG: UNIVERSE</title>
     <style>
         :root {
             --accent: #00f2ff;
-            --bg-dark: rgba(5, 10, 20, 0.95);
-            --glass: rgba(15, 20, 30, 0.85);
-            --border: rgba(0, 242, 255, 0.3);
-            --danger: #ff0055;
-            --success: #00ff88;
+            --bg-dark: #0a0e14;
+            --glass: rgba(20, 25, 35, 0.9);
+            --border: rgba(0, 242, 255, 0.2);
+            --text: #e0e0e0;
         }
-        * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; transition: 0.2s; }
-        body { 
-            margin: 0; height: 100vh; color: white; display: flex; overflow: hidden;
-            background: url('https://images.unsplash.com/photo-1462331940025-496dfbfc7564?q=80&w=2048') center/cover no-repeat;
+
+        * { box-sizing: border-box; font-family: 'Segoe UI', Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+        
+        body, html { 
+            margin: 0; padding: 0; height: 100%; width: 100%; 
+            background: #000; color: var(--text); overflow: hidden;
         }
+
+        /* Фоновая картинка с эффектом глубины */
+        .bg-layer {
+            position: fixed; inset: 0;
+            background: radial-gradient(circle at center, #102030 0%, #050a10 100%);
+            z-index: -1;
+        }
+
+        /* --- АВТОРИЗАЦИЯ (Адаптивная) --- */
+        #auth-screen { 
+            position: fixed; inset: 0; z-index: 10000; 
+            display: flex; align-items: center; justify-content: center; 
+            background: var(--bg-dark); padding: 20px;
+        }
+        .auth-box { 
+            width: 100%; max-width: 400px; padding: 30px; 
+            background: var(--glass); border: 1px solid var(--border); 
+            border-radius: 20px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+
+        /* --- ОСНОВНАЯ СЕТКА --- */
+        .app-container {
+            display: flex; height: 100vh; width: 100vw;
+        }
+
+        /* Боковая панель */
+        #sidebar { 
+            width: 320px; background: var(--bg-dark); 
+            border-right: 1px solid var(--border); display: flex; flex-direction: column;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Главная зона чата */
+        #main-chat { 
+            flex: 1; display: flex; flex-direction: column; 
+            background: rgba(0,0,0,0.3); position: relative;
+        }
+
+        /* --- ШАПКИ (Header) --- */
+        .header { 
+            height: 60px; min-height: 60px; padding: 0 15px;
+            display: flex; align-items: center; justify-content: space-between;
+            background: var(--glass); border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+        }
+
+        /* --- СПИСОК КОНТАКТОВ --- */
+        #contacts-list { flex: 1; overflow-y: auto; }
+        .contact-item {
+            padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.05);
+            display: flex; align-items: center; gap: 12px; cursor: pointer;
+        }
+        .contact-item:active { background: rgba(0,242,255,0.1); }
+
+        /* --- ЗОНА СООБЩЕНИЙ --- */
+        #messages-area { 
+            flex: 1; overflow-y: auto; padding: 15px; 
+            display: flex; flex-direction: column; gap: 10px;
+            background-image: url('https://www.transparenttextures.com/patterns/carbon-fibre.png');
+        }
+        .msg { 
+            max-width: 85%; padding: 10px 15px; border-radius: 15px; 
+            line-height: 1.4; font-size: 15px; position: relative;
+        }
+        .msg-my { align-self: flex-end; background: var(--accent); color: #000; border-bottom-right-radius: 2px; }
+        .msg-other { align-self: flex-start; background: #1e2530; color: #fff; border-bottom-left-radius: 2px; border: 1px solid var(--border); }
+
+        /* --- ПОЛЕ ВВОДА --- */
+        .input-area { 
+            padding: 10px; display: flex; gap: 8px; background: var(--glass);
+            border-top: 1px solid var(--border); align-items: center;
+        }
+        .ui-input { 
+            flex: 1; background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+            padding: 12px 15px; border-radius: 25px; color: #fff; outline: none; font-size: 16px;
+        }
+        .icon-btn { 
+            width: 45px; height: 45px; border-radius: 50%; border: none;
+            background: transparent; color: var(--accent); font-size: 20px; 
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+        }
+
+        /* --- МОБИЛЬНАЯ АДАПТАЦИЯ (ГЛАВНОЕ) --- */
+        @media (max-width: 768px) {
+            #sidebar {
+                position: fixed; left: 0; top: 0; bottom: 0; z-index: 1000;
+                transform: translateX(-100%); /* Прячем сайдбар влево */
+                width: 280px;
+            }
+            #sidebar.active { transform: translateX(0); }
+            
+            .msg { max-width: 90%; }
+            .header-menu-btn { display: block !important; }
+        }
+
+        /* Утилиты */
         .hidden { display: none !important; }
-        .glass-panel { background: var(--glass); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 15px; }
-        
-        /* АВТОРИЗАЦИЯ */
-        #auth-screen { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 10000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(15px); }
-        .auth-box { width: 400px; padding: 40px; text-align: center; box-shadow: 0 0 50px rgba(0,242,255,0.2); }
-        .ui-input { width: 100%; padding: 15px; margin: 10px 0; background: rgba(0,0,0,0.6); border: 1px solid var(--border); color: white; border-radius: 10px; outline: none; }
-        .btn { width: 100%; padding: 15px; background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-weight: bold; margin-top: 10px; }
-        .btn-accent { background: var(--accent); color: black; box-shadow: 0 0 15px rgba(0,242,255,0.3); }
-
-        /* ИНТЕРФЕЙС */
-        #sidebar { width: 320px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg-dark); z-index: 10; }
-        #main-chat { flex: 1; display: flex; flex-direction: column; background: rgba(0,0,0,0.5); position: relative; }
-        .header { height: 75px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid var(--border); background: var(--glass); }
-        
-        /* МЕНЮ И МОДАЛКИ */
-        .drawer { position: fixed; left: -350px; top: 0; width: 320px; height: 100%; background: var(--bg-dark); border-right: 1px solid var(--border); z-index: 5000; padding: 25px; box-shadow: 20px 0 60px #000; }
-        .drawer.active { left: 0; }
-        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 6000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
-        .avatar { width: 45px; height: 45px; border-radius: 50%; background: var(--accent); color: black; display: flex; align-items: center; justify-content: center; font-weight: bold; background-size: cover; background-position: center; }
-
-        /* ЧАТ */
-        #messages-area { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
-        .msg { padding: 12px 18px; border-radius: 18px; max-width: 75%; word-break: break-word; animation: slideUp 0.3s ease; }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } }
-        .msg-my { background: var(--accent); color: black; align-self: flex-end; border-bottom-right-radius: 2px; }
-        .msg-other { background: var(--glass); border: 1px solid var(--border); align-self: flex-start; border-bottom-left-radius: 2px; }
-        
-        .input-area { padding: 15px; border-top: 1px solid var(--border); display: flex; gap: 10px; background: var(--glass); align-items: center; }
-        .icon-btn { width: 50px; height: 50px; border-radius: 12px; border: 1px solid var(--border); background: transparent; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; }
-        .rec-active { background: var(--danger) !important; animation: pulse 1s infinite; }
-        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,0,85,0.4); } 100% { box-shadow: 0 0 0 15px transparent; } }
-
-        /* ИГРА */
-        .game-btn { width: 140px; height: 140px; border-radius: 50%; background: radial-gradient(circle, var(--accent), #0055ff); border: none; font-size: 22px; font-weight: bold; cursor: pointer; box-shadow: 0 0 30px rgba(0,242,255,0.4); }
+        .avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold; background-size: cover; }
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999; display: none; }
+        .overlay.active { display: block; }
     </style>
 </head>
 <body>
 
-<!-- АВТОРИЗАЦИЯ -->
+<div class="bg-layer"></div>
+
+<!-- ЭКРАН ВХОДА -->
 <div id="auth-screen">
-    <div class="glass-panel auth-box">
-        <h1 style="color: var(--accent); letter-spacing: 3px;">GHOST TG</h1>
-        <p style="opacity: 0.6;">Система контроля доступа</p>
-        <input type="text" id="auth-login" class="ui-input" placeholder="Логин">
-        <input type="password" id="auth-pass" class="ui-input" placeholder="Пароль">
-        <button class="btn btn-accent" onclick="appLogin()">ВОЙТИ / СОЗДАТЬ</button>
-        <p id="auth-error" style="color: var(--danger); font-size: 13px; margin-top: 10px;"></p>
+    <div class="auth-box">
+        <h1 style="color: var(--accent); margin-bottom: 5px;">GHOST TG</h1>
+        <p style="opacity: 0.5; margin-bottom: 25px;">Universe Access</p>
+        <input type="text" id="auth-login" class="ui-input" style="width: 100%; margin-bottom: 10px;" placeholder="Логин">
+        <input type="password" id="auth-pass" class="ui-input" style="width: 100%; margin-bottom: 20px;" placeholder="Пароль">
+        <button class="ui-input" style="background: var(--accent); color: #000; font-weight: bold; border: none;" onclick="appLogin()">ВОЙТИ / СОЗДАТЬ</button>
+        <p id="auth-error" style="color: #ff4444; font-size: 12px; margin-top: 15px;"></p>
     </div>
 </div>
 
-<!-- БОКОВОЕ МЕНЮ -->
-<div id="drawer" class="drawer">
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h2 style="color: var(--accent);">GHOST OS</h2>
-        <button class="icon-btn" onclick="toggleDrawer()">×</button>
-    </div>
-    <hr style="border: 0; border-top: 1px solid var(--border); margin: 20px 0;">
-    <div style="cursor:pointer; padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.05);" onclick="openProfile()">👤 Мой Профиль</div>
-    <div style="cursor:pointer; padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.05);" onclick="openGame()">🎮 Ghost Clicker</div>
-    <div style="cursor:pointer; padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.05);" onclick="openRequests()">🔔 Заявки в друзья</div>
-    <div style="cursor:pointer; padding: 15px; color: var(--danger);" onclick="location.reload()">🚪 Выход из системы</div>
-</div>
+<div class="app-container">
+    <!-- ЗАТЕМНЕНИЕ ДЛЯ МОБИЛОК -->
+    <div id="overlay" class="overlay" onclick="toggleMenu()"></div>
 
-<!-- ПРОФИЛЬ -->
-<div id="profile-modal" class="modal hidden">
-    <div class="glass-panel auth-box">
-        <h2>Профиль</h2>
-        <div id="my-avatar-large" class="avatar" style="width: 100px; height: 100px; margin: 0 auto; font-size: 30px;">?</div>
-        <h3 id="profile-nick">User</h3>
-        <p id="profile-role" style="color: var(--accent);">Роль: Пользователь</p>
-        <input type="text" id="avatar-input" class="ui-input" placeholder="Ссылка на фото (URL)">
-        <button class="btn btn-accent" onclick="saveAvatar()">Сменить аватар</button>
-        <button class="btn" onclick="closeModals()">Закрыть</button>
+    <!-- БОКОВАЯ ПАНЕЛЬ -->
+    <div id="sidebar">
+        <div class="header">
+            <span style="font-weight: bold; color: var(--accent);">GHOST OS</span>
+            <button class="icon-btn" onclick="toggleMenu()">✕</button>
+        </div>
+        <div style="padding: 15px;">
+            <button class="ui-input" style="width: 100%; text-align: left; margin-bottom: 10px;" onclick="openProfile()">👤 Профиль</button>
+            <button class="ui-input" style="width: 100%; text-align: left; margin-bottom: 10px;" onclick="openGame()">🎮 Кликер</button>
+        </div>
+        <div id="contacts-list">
+            <div class="contact-item" onclick="switchChat('global'); toggleMenu()">
+                <div class="avatar">🌐</div>
+                <b>Общий Чат</b>
+            </div>
+            <!-- Сюда будут добавляться друзья -->
+        </div>
     </div>
-</div>
 
-<!-- КЛИКЕР -->
-<div id="game-modal" class="modal hidden">
-    <div class="glass-panel auth-box">
-        <h2>КЛИКЕР МОДЕРКИ</h2>
-        <p>Энергия: <b id="game-energy" style="color: var(--accent);">100</b> / 100</p>
-        <button class="game-btn" onclick="doClick()">КЛИК!</button>
-        <p style="margin-top: 20px;">Клики: <span id="game-clicks">0</span> / 500,000</p>
-        <small style="opacity:0.5;">Обновление энергии каждые 15 минут</small><br>
-        <button class="btn" onclick="closeModals()" style="margin-top: 15px;">Вернуться</button>
-    </div>
-</div>
+    <!-- ОСНОВНОЙ ЧАТ -->
+    <div id="main-chat">
+        <div class="header">
+            <button class="icon-btn header-menu-btn" style="display: none;" onclick="toggleMenu()">☰</button>
+            <b id="chat-title">Общий Чат</b>
+            <div class="avatar" id="top-avatar" style="width: 35px; height: 35px;">?</div>
+        </div>
 
-<!-- ЗАЯВКИ -->
-<div id="requests-modal" class="modal hidden">
-    <div class="glass-panel auth-box" style="width: 450px;">
-        <h2>Входящие заявки</h2>
-        <div id="req-list" style="max-height: 250px; overflow-y: auto;"></div>
-        <button class="btn" onclick="closeModals()">Закрыть</button>
-    </div>
-</div>
+        <div id="messages-area">
+            <!-- Сообщения появятся тут -->
+        </div>
 
-<!-- ОСНОВНОЙ ИНТЕРФЕЙС -->
-<div id="sidebar">
-    <div class="header">
-        <button class="icon-btn" onclick="toggleDrawer()">☰</button>
-        <b style="color: var(--accent);">GHOST TG</b>
-    </div>
-    <div style="padding: 15px;">
-        <input type="text" id="search-in" class="ui-input" placeholder="Поиск ника...">
-        <button class="btn btn-accent" onclick="searchUser()">Найти друга</button>
-        <div id="search-result" style="margin-top: 10px;"></div>
-    </div>
-    <div id="contacts-list" style="flex: 1; overflow-y: auto;">
-        <div style="padding: 15px; background: rgba(0,242,255,0.1); border-left: 4px solid var(--accent); cursor: pointer;" onclick="switchChat('global')">
-            🌐 Общий Чат
+        <div class="input-area">
+            <button class="icon-btn" id="mic-btn" onmousedown="startVoice()" onmouseup="stopVoice()" ontouchstart="startVoice()" ontouchend="stopVoice()">🎙</button>
+            <input type="text" id="msg-in" class="ui-input" placeholder="Сообщение...">
+            <button class="icon-btn" onclick="sendMsg()">➤</button>
         </div>
     </div>
 </div>
 
-<div id="main-chat">
-    <div class="header">
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <b id="chat-title" style="font-size: 18px;">Общий Чат</b>
-        </div>
+<!-- МОДАЛКИ (Профиль, Игра) — Сделаны максимально просто для всех экранов -->
+<div id="modal-box" class="hidden" style="position: fixed; inset: 0; z-index: 5000; background: var(--bg-dark); display: flex; flex-direction: column; padding: 20px;">
+    <div class="header" style="background: none; border: none;">
+        <h2 id="modal-title" style="color: var(--accent);">Меню</h2>
+        <button class="icon-btn" onclick="closeModal()">✕</button>
     </div>
-    <div id="messages-area"></div>
-    <div class="input-area">
-        <button id="mic-btn" class="icon-btn" onmousedown="startVoice()" onmouseup="stopVoice()">🎙</button>
-        <input type="text" id="msg-in" class="ui-input" style="margin: 0;" placeholder="Сообщение...">
-        <button class="icon-btn" style="background: var(--accent); color: black;" onclick="sendMsg()">➤</button>
+    <div id="modal-content" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+        <!-- Контент модалки -->
     </div>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-app.js";
-    import { getDatabase, ref, set, push, onChildAdded, onValue, get, update, remove } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-database.js";
+    import { getDatabase, ref, set, push, onChildAdded, onValue, get, update } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-database.js";
 
-    // --- ВСТАВЬ СЮДА СВОЙ API KEY ЕСЛИ ОН ЕСТЬ, ОСТАЛЬНОЕ УЖЕ НАСТРОЕНО ---
+    // ТВОИ ДАННЫЕ FIREBASE
     const firebaseConfig = {
-        apiKey: "ТВОЙ_API_КЛЮЧ_ЗДЕСЬ", 
+        apiKey: "ТВОЙ_КЛЮЧ_ИЗ_ПАНЕЛИ_FIREBASE", // ОБЯЗАТЕЛЬНО ВСТАВЬ ЕГО
         databaseURL: "https://haker-a94a6-default-rtdb.europe-west1.firebasedatabase.app/",
         projectId: "haker-a94a6",
         appId: "1:931213076110:web:166f008f51a6659695d852"
@@ -164,227 +207,85 @@
     const db = getDatabase(app);
     let user = null;
     let activeChat = 'global';
-    let mediaRecorder = null;
-    let audioStream = null;
 
-    const filter = ['мат', 'дурак', 'плохоеслово']; // Слова для цензуры
-
-    // --- АВТОРИЗАЦИЯ С ОТЛОВОМ ОШИБОК ---
+    // ВХОД
     window.appLogin = async () => {
         const u = document.getElementById('auth-login').value.trim();
         const p = document.getElementById('auth-pass').value.trim();
-        const errBox = document.getElementById('auth-error');
-        errBox.innerText = ""; // Очищаем старые ошибки
-        
-        if(!u || !p) { errBox.innerText = "Введите логин и пароль!"; return; }
-
-        if(u === 'Admin' && p === '15012010') {
-            user = { nick: 'Admin', role: 'admin', avatar: '', clicks: 0, energy: 100 };
-            finishLogin(); return;
-        }
+        if(!u || !p) return;
 
         try {
-            const uRef = ref(db, 'users/' + u);
-            const snap = await get(uRef);
-
+            const snap = await get(ref(db, 'users/' + u));
             if(snap.exists()) {
-                if(snap.val().pass === p) {
-                    user = snap.val();
-                    finishLogin();
-                } else {
-                    errBox.innerText = "Неверный пароль!";
-                }
+                if(snap.val().pass === p) { user = snap.val(); }
+                else { alert("Неверный пароль"); return; }
             } else {
-                // Создаем нового
-                user = { nick: u, pass: p, role: 'user', avatar: '', clicks: 0, energy: 100, lastEnergyTime: Date.now() };
-                await set(uRef, user);
-                finishLogin();
+                user = { nick: u, pass: p, role: 'user', avatar: '', clicks: 0, energy: 100 };
+                await set(ref(db, 'users/' + u), user);
             }
-        } catch (error) {
-            console.error(error);
-            errBox.innerText = "Ошибка базы данных. Проверьте Rules в Firebase! " + error.message;
-        }
+            document.getElementById('auth-screen').classList.add('hidden');
+            switchChat('global');
+        } catch(e) { alert("Ошибка: Проверьте интернет или apiKey"); }
     };
 
-    function finishLogin() {
-        document.getElementById('auth-screen').classList.add('hidden');
-        loadFriendsList();
-        switchChat('global');
-        listenRequests();
-    }
-
-    // --- ОТПРАВКА СООБЩЕНИЙ ---
+    // ЧАТ
     window.sendMsg = () => {
-        const val = document.getElementById('msg-in').value.trim();
-        if(!val) return;
-
-        if(filter.some(word => val.toLowerCase().includes(word))) {
-            push(ref(db, 'violations'), { u: user.nick, text: val, time: new Date().toLocaleString() });
-            alert("Ваше сообщение заблокировано цензурой!");
-            document.getElementById('msg-in').value = ''; return;
-        }
-
-        const path = activeChat === 'global' ? 'msgs/global' : `msgs/direct_${[user.nick, activeChat].sort().join('_')}`;
-        push(ref(db, path), { u: user.nick, m: val, t: 'text', r: user.role });
+        const m = document.getElementById('msg-in').value.trim();
+        if(!m) return;
+        push(ref(db, 'msgs/global'), { u: user.nick, m: m, t: 'text' });
         document.getElementById('msg-in').value = '';
     };
 
-    // --- МИКРОФОН ---
-    window.startVoice = async () => {
-        try {
-            audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(audioStream);
-            let chunks = [];
-            mediaRecorder.ondataavailable = e => chunks.push(e.data);
-            mediaRecorder.onstop = () => {
-                const blob = new Blob(chunks, { type: 'audio/webm' });
-                const reader = new FileReader();
-                reader.readAsDataURL(blob);
-                reader.onloadend = () => {
-                    const path = activeChat === 'global' ? 'msgs/global' : `msgs/direct_${[user.nick, activeChat].sort().join('_')}`;
-                    push(ref(db, path), { u: user.nick, m: reader.result, t: 'audio', r: user.role });
-                    audioStream.getTracks().forEach(t => t.stop()); // Полное отключение
-                };
-            };
-            mediaRecorder.start();
-            document.getElementById('mic-btn').classList.add('rec-active');
-        } catch(e) { alert("Микрофон недоступен"); }
-    };
-
-    window.stopVoice = () => { if(mediaRecorder) mediaRecorder.stop(); document.getElementById('mic-btn').classList.remove('rec-active'); };
-
-    // --- ПЕРЕКЛЮЧЕНИЕ ЧАТА ---
-    window.switchChat = (chatId) => {
-        activeChat = chatId;
-        document.getElementById('chat-title').innerText = chatId === 'global' ? 'Общий Чат' : `ЛС: ${chatId}`;
+    window.switchChat = (id) => {
+        activeChat = id;
         document.getElementById('messages-area').innerHTML = '';
-        const path = chatId === 'global' ? 'msgs/global' : `msgs/direct_${[user.nick, chatId].sort().join('_')}`;
-        
-        onChildAdded(ref(db, path), (snap) => {
+        onChildAdded(ref(db, 'msgs/' + id), (snap) => {
             const d = snap.val();
             const div = document.createElement('div');
-            const roleTag = d.r && d.r !== 'user' ? `[${d.r}] ` : '';
             div.className = `msg ${d.u === user.nick ? 'msg-my' : 'msg-other'}`;
-            let content = d.t === 'audio' ? `<audio controls src="${d.m}" style="height:35px;"></audio>` : d.m;
-            div.innerHTML = `<small style="font-size:10px; opacity:0.7;">${roleTag}${d.u}</small><br>${content}`;
+            div.innerHTML = `<small style="font-size:10px; opacity:0.6;">${d.u}</small><br>${d.m}`;
             document.getElementById('messages-area').appendChild(div);
             document.getElementById('messages-area').scrollTop = document.getElementById('messages-area').scrollHeight;
         });
     };
 
-    // --- ДРУЗЬЯ ---
-    window.searchUser = async () => {
-        const q = document.getElementById('search-in').value.trim();
-        if(!q || q === user.nick) return;
-        const s = await get(ref(db, 'users/' + q));
-        const res = document.getElementById('search-result');
-        if(s.exists()) {
-            res.innerHTML = `Найден: ${q} <button class="btn btn-accent" style="width:auto; padding:5px 10px;" onclick="sendFriendReq('${q}')">+</button>`;
-        } else res.innerHTML = "Игрок не найден";
+    // ИНТЕРФЕЙСНЫЕ ФУНКЦИИ
+    window.toggleMenu = () => {
+        document.getElementById('sidebar').classList.toggle('active');
+        document.getElementById('overlay').classList.toggle('active');
     };
-
-    window.sendFriendReq = (target) => {
-        set(ref(db, `requests/${target}/${user.nick}`), 'pending');
-        alert("Заявка отправлена!");
-    };
-
-    function listenRequests() {
-        onValue(ref(db, `requests/${user.nick}`), (snap) => {
-            const list = document.getElementById('req-list');
-            list.innerHTML = '';
-            if(snap.exists()) {
-                Object.keys(snap.val()).forEach(name => {
-                    list.innerHTML += `<div style="padding:10px; display:flex; justify-content:space-between; align-items:center;">
-                        <span>${name}</span>
-                        <div>
-                            <button onclick="acceptFriend('${name}')" style="background:var(--success); border:0; padding:8px; border-radius:5px;">Принять</button>
-                            <button onclick="declineFriend('${name}')" style="background:var(--danger); border:0; padding:8px; border-radius:5px;">Отклонить</button>
-                        </div>
-                    </div>`;
-                });
-            } else list.innerHTML = "Нет новых заявок";
-        });
-    }
-
-    window.acceptFriend = async (name) => {
-        await set(ref(db, `friends/${user.nick}/${name}`), true);
-        await set(ref(db, `friends/${name}/${user.nick}`), true);
-        await remove(ref(db, `requests/${user.nick}/${name}`));
-        alert("Друг добавлен!");
-    };
-
-    window.declineFriend = async (name) => {
-        await remove(ref(db, `requests/${user.nick}/${name}`));
-    };
-
-    function loadFriendsList() {
-        onValue(ref(db, `friends/${user.nick}`), (snap) => {
-            const container = document.getElementById('contacts-list');
-            container.innerHTML = `<div style="padding: 15px; background: rgba(0,242,255,0.1); border-left: 4px solid var(--accent); cursor: pointer;" onclick="switchChat('global')">🌐 Общий Чат</div>`;
-            if(snap.exists()) {
-                Object.keys(snap.val()).forEach(name => {
-                    const div = document.createElement('div');
-                    div.style = "padding: 15px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 10px;";
-                    div.innerHTML = `<div class="avatar" style="width: 30px; height: 30px; font-size: 14px;">${name[0].toUpperCase()}</div> <span>${name}</span>`;
-                    div.onclick = () => switchChat(name);
-                    container.appendChild(div);
-                });
-            }
-        });
-    }
-
-    // --- КЛИКЕР И ПРОФИЛЬ ---
-    window.doClick = () => {
-        const now = Date.now();
-        if(now - user.lastEnergyTime > 900000) { user.energy = 100; user.lastEnergyTime = now; } // Реген энергии
-        
-        if(user.energy > 0) {
-            user.energy--; user.clicks++;
-            updateUI();
-            update(ref(db, 'users/' + user.nick), { energy: user.energy, clicks: user.clicks, lastEnergyTime: user.lastEnergyTime });
-            
-            if(user.clicks >= 500000 && !user.role.includes('Модер') && user.role !== 'admin') {
-                const mName = "Модер_" + Math.floor(Math.random()*1000);
-                user.role = mName;
-                update(ref(db, 'users/' + user.nick), { role: mName });
-                alert("ПОЗДРАВЛЯЕМ! Вы получили роль: " + mName);
-            }
-        } else { alert("Энергия на нуле! Возвращайся через 15 минут."); }
-    };
-
-    function updateUI() {
-        document.getElementById('game-energy').innerText = user.energy;
-        document.getElementById('game-clicks').innerText = user.clicks;
-    }
 
     window.openProfile = () => {
-        document.getElementById('profile-nick').innerText = user.nick;
-        document.getElementById('profile-role').innerText = "Роль: " + user.role;
-        const av = document.getElementById('my-avatar-large');
-        if(user.avatar) {
-            av.style.backgroundImage = `url(${user.avatar})`;
-            av.innerText = '';
-        } else {
-            av.innerText = user.nick[0].toUpperCase();
-            av.style.backgroundImage = '';
-        }
-        document.getElementById('profile-modal').classList.remove('hidden');
-        toggleDrawer(); // Закрываем менюшку
+        showModal("Мой Профиль", `
+            <div class="avatar" style="width:100px; height:100px; font-size:40px;">${user.nick[0]}</div>
+            <h3>${user.nick}</h3>
+            <p>Статус: ${user.role}</p>
+            <button class="ui-input" onclick="alert('Скоро!')">Изменить аватар</button>
+        `);
     };
 
-    window.saveAvatar = () => {
-        const link = document.getElementById('avatar-input').value;
-        if(link) {
-            user.avatar = link;
-            update(ref(db, 'users/' + user.nick), { avatar: link });
-            openProfile();
-        }
+    window.openGame = () => {
+        showModal("Ghost Clicker", `
+            <div style="text-align:center;">
+                <h1 id="m-clicks" style="font-size:50px; color:var(--accent);">${user.clicks}</h1>
+                <button onclick="clicker()" style="width:150px; height:150px; border-radius:50%; background:var(--accent); border:none; font-weight:bold; font-size:20px; box-shadow: 0 0 30px var(--accent);">КЛИК!</button>
+            </div>
+        `);
     };
 
-    window.toggleDrawer = () => document.getElementById('drawer').classList.toggle('active');
-    window.openGame = () => { updateUI(); document.getElementById('game-modal').classList.remove('hidden'); toggleDrawer(); };
-    window.openRequests = () => { document.getElementById('requests-modal').classList.remove('hidden'); toggleDrawer(); };
-    window.closeModals = () => document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+    window.clicker = () => {
+        user.clicks++;
+        document.getElementById('m-clicks').innerText = user.clicks;
+        update(ref(db, 'users/' + user.nick), { clicks: user.clicks });
+    };
+
+    function showModal(title, content) {
+        document.getElementById('modal-title').innerText = title;
+        document.getElementById('modal-content').innerHTML = content;
+        document.getElementById('modal-box').classList.remove('hidden');
+    }
+
+    window.closeModal = () => document.getElementById('modal-box').classList.add('hidden');
 
 </script>
 </body>
