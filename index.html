@@ -3,157 +3,195 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GHOST TG: UNIVERSE</title>
+    <title>GHOST SYNDICATE</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         :root {
             --accent: #00f2ff;
-            --bg-dark: #0a0e14;
-            --glass: rgba(20, 25, 35, 0.95);
-            --border: rgba(0, 242, 255, 0.3);
-            --text: #e0e0e0;
             --danger: #ff0055;
-            --success: #00ff88;
+            --glass: rgba(10, 15, 20, 0.85);
+            --neon: 0 0 15px rgba(0, 242, 255, 0.5);
         }
-
-        * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; -webkit-tap-highlight-color: transparent; }
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; color: var(--text); overflow: hidden; }
-
-        .app-container { display: flex; height: 100vh; width: 100vw; position: relative; }
-
-        /* САЙДБАР */
-        #sidebar { 
-            width: 320px; background: var(--bg-dark); border-right: 1px solid var(--border); 
-            display: flex; flex-direction: column; transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 2000;
-        }
-
-        #main-chat { flex: 1; display: flex; flex-direction: column; background: rgba(0,0,0,0.6); position: relative; }
-
-        /* ШАПКА */
-        .header { 
-            height: 65px; min-height: 65px; padding: 0 15px; display: flex; align-items: center; 
-            justify-content: space-between; background: var(--glass); border-bottom: 1px solid var(--border);
-            backdrop-filter: blur(15px);
-        }
-
-        /* СООБЩЕНИЯ */
-        #messages-area { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
-        .msg { padding: 12px 18px; border-radius: 18px; max-width: 85%; word-wrap: break-word; animation: slideIn 0.2s; font-size: 15px; position: relative; }
-        .msg-my { background: var(--accent); color: #000; align-self: flex-end; border-bottom-right-radius: 2px; }
-        .msg-other { background: var(--glass); border: 1px solid var(--border); align-self: flex-start; border-bottom-left-radius: 2px; }
-        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } }
-
-        /* ВВОД */
-        .input-area { padding: 12px 15px; display: flex; gap: 10px; background: var(--glass); border-top: 1px solid var(--border); align-items: center; }
-        .ui-input { width: 100%; padding: 14px; background: rgba(0,0,0,0.5); border: 1px solid var(--border); color: white; border-radius: 25px; outline: none; font-size: 16px; transition: 0.2s; }
-        .ui-input:focus { border-color: var(--accent); }
-        .btn-circle { width: 48px; height: 48px; min-width: 48px; border-radius: 50%; border: 1px solid var(--border); background: none; color: var(--accent); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 22px; }
         
-        .rec-active { background: var(--danger) !important; color: white; animation: pulse 1s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-
-        /* МОБИЛЬНАЯ ВЕРСИЯ */
-        @media (max-width: 768px) {
-            #sidebar { position: fixed; left: -320px; height: 100%; width: 280px; box-shadow: 10px 0 30px #000; }
-            #sidebar.active { left: 0; }
-            .header-menu-btn { display: flex !important; }
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; outline: none; }
+        
+        body { 
+            margin: 0; padding: 0; height: 100vh; overflow: hidden; color: white;
+            background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.8)), url('https://i.pinimg.com/originals/9f/95/85/9f95856ebf7b112dc26ff64b184061a9.gif') center/cover no-repeat;
         }
 
-        /* МОДАЛЬНЫЕ ОКНА */
-        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 5000; display: none; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(8px); }
-        .modal.active { display: flex; }
-        .modal-box { width: 100%; max-width: 420px; background: var(--bg-dark); border: 1px solid var(--border); padding: 30px; border-radius: 25px; text-align: center; }
-
-        .clicker-btn { width: 180px; height: 180px; border-radius: 50%; background: radial-gradient(circle, var(--accent), #0055ff); border: 6px solid rgba(255,255,255,0.1); font-size: 26px; font-weight: bold; cursor: pointer; margin: 25px 0; transition: 0.1s; }
-        .clicker-btn:active { transform: scale(0.92); }
+        /* --- СКРЫТЫЕ ОКНА (МОДАЛКИ) --- */
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 9000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(10px); }
+        .box { background: var(--glass); padding: 30px; border-radius: 20px; border: 1px solid var(--accent); box-shadow: var(--neon); width: 90%; max-width: 400px; text-align: center; }
         
-        .avatar { width: 45px; height: 45px; border-radius: 50%; background: var(--accent); color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold; background-size: cover; border: 1px solid var(--border); }
-        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; z-index: 1500; }
-        .overlay.active { display: block; }
-        .admin-btn { border: 1px solid var(--danger) !important; color: var(--danger) !important; display: none; }
+        .ui-input { width: 100%; padding: 14px; margin-bottom: 15px; background: rgba(0,0,0,0.6); border: 1px solid rgba(0,242,255,0.3); border-radius: 12px; color: white; font-size: 16px; transition: 0.3s; }
+        .ui-input:focus { border-color: var(--accent); box-shadow: var(--neon); }
+        .btn { width: 100%; padding: 14px; background: var(--accent); color: black; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase; transition: 0.2s; margin-bottom: 10px; }
+        .btn:active { transform: scale(0.95); }
+        .btn-red { background: var(--danger); color: white; }
+
+        /* --- ГЛАВНЫЙ ИНТЕРФЕЙС --- */
+        .app { display: flex; height: 100vh; }
+        
+        /* БОКОВОЕ МЕНЮ */
+        #sidebar { width: 320px; background: var(--glass); border-right: 1px solid rgba(0,242,255,0.2); display: flex; flex-direction: column; transition: 0.3s; z-index: 1000; }
+        .profile-area { padding: 20px; border-bottom: 1px solid rgba(0,242,255,0.2); text-align: center; }
+        .status-dot { display: inline-block; width: 10px; height: 10px; background: #0f0; border-radius: 50%; box-shadow: 0 0 10px #0f0; }
+        .phantom-text { animation: phantom 2s infinite alternate; font-weight: bold; }
+        @keyframes phantom { 0% { color: var(--accent); text-shadow: 0 0 10px var(--accent); } 100% { color: #b000ff; text-shadow: 0 0 20px #b000ff; } }
+
+        /* ЧАТ */
+        #main { flex: 1; display: flex; flex-direction: column; position: relative; }
+        .header { padding: 15px 20px; background: rgba(0,0,0,0.5); border-bottom: 1px solid rgba(0,242,255,0.2); display: flex; justify-content: space-between; align-items: center; }
+        #chat-flow { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+        
+        .msg { padding: 12px 16px; border-radius: 15px; max-width: 80%; word-wrap: break-word; position: relative; cursor: pointer; }
+        .msg-my { align-self: flex-end; background: var(--accent); color: black; border-bottom-right-radius: 2px; }
+        .msg-other { align-self: flex-start; background: rgba(20,20,30,0.8); border: 1px solid rgba(255,255,255,0.1); border-bottom-left-radius: 2px; }
+        .msg-sys { align-self: center; background: rgba(255,0,85,0.2); color: var(--danger); border: 1px solid var(--danger); text-align: center; font-weight: bold; width: 90%; }
+        
+        /* МОБИЛЬНЫЙ ФИКС ВВОДА */
+        .input-bar { padding: 15px; background: var(--glass); border-top: 1px solid var(--accent); display: flex; gap: 10px; margin-bottom: 25px; /* ПОДНЯТО ДЛЯ КЛАВИАТУРЫ */ }
+        .input-bar .ui-input { margin-bottom: 0; border-radius: 25px; }
+        .send-btn { width: 50px; height: 50px; border-radius: 50%; background: var(--accent); color: black; border: none; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+        /* --- МАГАЗИН И АДМИНКА --- */
+        .shop-item { display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #333; }
+        .admin-panel { position: absolute; right: 0; top: 0; bottom: 0; width: 350px; background: rgba(10,0,0,0.95); border-left: 2px solid var(--danger); z-index: 5000; display: none; flex-direction: column; padding: 15px; overflow-y: auto; box-shadow: -10px 0 30px rgba(255,0,85,0.2); }
+        .spy-btn { background: #222; border: 1px solid #555; color: #aaa; padding: 8px; width: 100%; margin-bottom: 5px; cursor: pointer; text-align: left; border-radius: 5px; }
+        .spy-btn:hover { border-color: var(--danger); color: white; }
+
+        @media (max-width: 768px) { #sidebar { position: fixed; left: -320px; height: 100%; } #sidebar.active { left: 0; } }
     </style>
 </head>
 <body>
 
-<div id="overlay" class="overlay" onclick="toggleSidebar()"></div>
+<!-- 1. АВТОРИЗАЦИЯ С АВТОСОХРАНЕНИЕМ -->
+<div id="auth-scr" class="overlay" style="display: flex;">
+    <form class="box" onsubmit="loginApp(event)">
+        <h2 style="color: var(--accent); letter-spacing: 2px;">GHOST SYNDICATE</h2>
+        <p style="font-size: 12px; color: #888; margin-bottom: 20px;">System v5.0 Ultimate</p>
+        <input type="text" id="l-user" name="username" autocomplete="username" class="ui-input" placeholder="Логин" required>
+        <input type="password" id="l-pass" name="password" autocomplete="current-password" class="ui-input" placeholder="Пароль" required>
+        <button type="submit" class="btn">ВОЙТИ В СЕТЬ</button>
+    </form>
+</div>
 
-<!-- ЭКРАН ВХОДА -->
-<div id="auth-screen" class="modal active">
-    <div class="modal-box">
-        <h1 style="color: var(--accent); margin: 0;">GHOST TG</h1>
-        <p style="opacity: 0.5; margin-bottom: 25px;">Universe System v3.1</p>
-        <input type="text" id="auth-login" class="ui-input" style="margin-bottom: 12px;" placeholder="Логин">
-        <input type="password" id="auth-pass" class="ui-input" style="margin-bottom: 25px;" placeholder="Пароль">
-        <button class="ui-input" style="background: var(--accent); color: black; font-weight: bold; border: none;" onclick="appLogin()">ПОДКЛЮЧИТЬСЯ</button>
+<!-- 2. СОЗДАНИЕ USER ID (Для новых) -->
+<div id="uid-scr" class="overlay">
+    <div class="box">
+        <h3 style="color: var(--accent);">СОЗДАТЬ USER ID</h3>
+        <p style="font-size: 12px; color: #aaa;">По этому ID вас будут искать друзья. Начните с @</p>
+        <input type="text" id="new-uid" class="ui-input" placeholder="@nickname">
+        <button class="btn" onclick="saveUID()">ПРОДОЛЖИТЬ</button>
     </div>
 </div>
 
-<div class="app-container">
+<!-- ГЛАВНОЕ ПРИЛОЖЕНИЕ -->
+<div class="app">
+    
     <!-- БОКОВОЕ МЕНЮ -->
     <div id="sidebar">
-        <div class="header">
-            <b style="color: var(--accent);">GHOST OS</b>
-            <button class="btn-circle" style="border: none;" onclick="toggleSidebar()">✕</button>
+        <div class="profile-area">
+            <h2 id="my-name" style="margin: 0;">--</h2>
+            <div id="my-uid" style="color: var(--accent); font-size: 14px; margin-bottom: 10px;">@--</div>
+            <div style="font-size: 13px;">
+                💰 Клики: <b id="my-clicks">0</b><br>
+                ⚡ Энергия: <b id="my-energy">1000</b>
+            </div>
+            <button class="btn" style="margin-top: 15px; border-radius: 50px;" onclick="doClick()">🔴 ТАПНУТЬ</button>
         </div>
+        
         <div style="padding: 15px; flex: 1; overflow-y: auto;">
-            <button class="ui-input" style="margin-bottom: 10px; text-align: left;" onclick="openProfile()">👤 Профиль</button>
-            <button class="ui-input" style="margin-bottom: 10px; text-align: left;" onclick="openGame()">🎮 Кликер</button>
-            <button class="ui-input" style="margin-bottom: 10px; text-align: left;" onclick="openRequests()">🔔 Заявки</button>
-            
-            <!-- Кнопка только для админа -->
-            <button id="adm-nav-btn" class="ui-input admin-btn" style="text-align: left;" onclick="window.open('admin.html', '_blank')">👑 Админ-Панель</button>
+            <button class="btn" style="background: #222; color: white;" onclick="openShop()"><i class="fas fa-shopping-cart"></i> Магазин (Автоклик)</button>
+            <button class="btn" style="background: #222; color: white;" onclick="openSettings()"><i class="fas fa-cog"></i> Настройки</button>
+            <div id="admin-btn-zone"></div>
 
-            <p style="font-size: 11px; color: var(--accent); margin: 20px 0 10px 5px; text-transform: uppercase;">Диалоги</p>
-            <div id="contacts-list">
-                <div style="padding: 14px; cursor: pointer; border-radius: 12px; background: rgba(0,242,255,0.1); margin-bottom: 5px;" onclick="switchChat('global'); toggleSidebar()">🌐 Общий Чат</div>
+            <p style="color: #666; font-size: 11px; margin-top: 20px;">ДОСТУПНЫЕ ЧАТЫ</p>
+            <div id="chats-list">
+                <div onclick="switchChat('global')" style="padding: 12px; background: rgba(0,242,255,0.1); border-radius: 8px; cursor: pointer; border: 1px solid rgba(0,242,255,0.3);">🌐 ГЛОБАЛЬНЫЙ ЧАТ</div>
+                <div onclick="switchChat('system')" style="padding: 12px; background: rgba(255,0,85,0.1); border-radius: 8px; cursor: pointer; border: 1px solid rgba(255,0,85,0.3); margin-top: 10px; color: var(--danger);">🚨 СИСТЕМНЫЕ СМС</div>
             </div>
         </div>
     </div>
 
-    <!-- ОКНО ЧАТА -->
-    <div id="main-chat">
+    <!-- ЧАТ -->
+    <div id="main">
         <div class="header">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <button class="btn-circle header-menu-btn" style="display: none; border: none;" onclick="toggleSidebar()">☰</button>
-                <b id="chat-title">Общий Чат</b>
+            <button style="background:none; border:none; color:white; font-size:24px;" onclick="document.getElementById('sidebar').classList.toggle('active')">☰</button>
+            <b id="chat-title">ГЛОБАЛЬНЫЙ ЧАТ</b>
+            <div id="status-ind" class="status-dot"></div>
+        </div>
+        
+        <div id="chat-flow"></div>
+        
+        <div class="input-bar">
+            <input type="text" id="msg-in" class="ui-input" placeholder="Сообщение...">
+            <button class="send-btn" onclick="sendMsg()"><i class="fas fa-paper-plane"></i></button>
+        </div>
+    </div>
+
+    <!-- АДМИН ПАНЕЛЬ (SUPREME CONTROL) -->
+    <div id="admin-panel" class="admin-panel">
+        <h2 style="color: var(--danger); border-bottom: 1px solid var(--danger); padding-bottom: 10px;">👁 СИСТЕМА БОГА</h2>
+        
+        <div style="margin-bottom: 20px;">
+            <h4>УПРАВЛЕНИЕ ИГРОКОМ</h4>
+            <input type="text" id="adm-target" class="ui-input" style="padding: 10px;" placeholder="Логин (не @ID)">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <button class="btn btn-red" onclick="admAct('ban')">БАН</button>
+                <button class="btn" style="background:#ffaa00;" onclick="admAct('mute')">МУТ</button>
+                <button class="btn" style="background:#0f0;" onclick="admAct('mod')">ДАТЬ MOD</button>
+                <button class="btn" style="background:var(--accent);" onclick="admAct('money')">+100К</button>
             </div>
-            <div id="top-avatar" class="avatar">?</div>
+            <button class="btn btn-red" style="background: #000; border: 1px solid red; margin-top: 5px;" onclick="admAct('del')">УДАЛИТЬ АККАУНТ</button>
         </div>
-        <div id="messages-area"></div>
-        <div class="input-area">
-            <button id="mic-btn" class="btn-circle" onmousedown="startVoice()" onmouseup="stopVoice()" ontouchstart="startVoice()" ontouchend="stopVoice()">🎙</button>
-            <input type="text" id="msg-in" class="ui-input" placeholder="Написать сообщение...">
-            <button class="btn-circle" style="background: var(--accent); color: black; border: none;" onclick="sendMsg()">➤</button>
+
+        <div style="flex: 1; overflow-y: auto;">
+            <h4 style="color: #aaa;">🕵️ ШПИОНАЖ (ПЕРЕПИСКИ ЛС)</h4>
+            <div id="spy-list">Загрузка базы...</div>
         </div>
+        <button class="btn" onclick="document.getElementById('admin-panel').style.display='none'">ЗАКРЫТЬ ПАНЕЛЬ</button>
+    </div>
+
+</div>
+
+<!-- МАГАЗИН АВТОКЛИКЕРОВ -->
+<div id="shop-mod" class="overlay">
+    <div class="box">
+        <h2 style="color: var(--accent);">МАГАЗИН (BLACK MARKET)</h2>
+        <div id="shop-items"></div>
+        <button class="btn btn-red" style="margin-top: 15px;" onclick="document.getElementById('shop-mod').style.display='none'">ВЫЙТИ</button>
     </div>
 </div>
 
-<!-- ОКНА (МОДАЛКИ) -->
-<div id="profile-modal" class="modal"><div class="modal-box">
-    <div id="p-avatar-big" class="avatar" style="width: 100px; height: 100px; margin: 0 auto 15px; font-size: 40px;"></div>
-    <h2 id="p-nick"></h2>
-    <p id="p-role" style="color: var(--accent);"></p>
-    <input type="text" id="p-avatar-url" class="ui-input" placeholder="Ссылка на фото (URL)">
-    <button class="ui-input" style="margin-top: 15px; background: var(--accent); color: black;" onclick="saveAvatar()">СОХРАНИТЬ</button>
-    <button class="ui-input" style="margin-top: 10px;" onclick="closeModals()">ЗАКРЫТЬ</button>
-</div></div>
+<!-- НАСТРОЙКИ (С ВК) -->
+<div id="set-mod" class="overlay">
+    <div class="box">
+        <h2>НАСТРОЙКИ</h2>
+        <a href="https://vk.com/id755275260" target="_blank" style="display: block; background: #4c75a3; color: white; padding: 15px; border-radius: 10px; text-decoration: none; margin-bottom: 15px; font-weight: bold;">
+            <i class="fab fa-vk" style="font-size: 20px; vertical-align: middle; margin-right: 10px;"></i> Нашли баг? Писать Админу
+        </a>
+        <button class="btn" onclick="location.reload()">ВЫЙТИ ИЗ АККАУНТА</button>
+        <button class="btn btn-red" onclick="document.getElementById('set-mod').style.display='none'">ЗАКРЫТЬ</button>
+    </div>
+</div>
 
-<div id="game-modal" class="modal"><div class="modal-box">
-    <h2>GHOST CLICKER</h2>
-    <p>Энергия: <b id="g-energy">100</b></p>
-    <button class="clicker-btn" onclick="doClick()">КЛИК!</button>
-    <h3>Счёт: <span id="g-clicks">0</span></h3>
-    <button class="ui-input" onclick="closeModals()">ВЫЙТИ</button>
-</div></div>
-
-<div id="req-modal" class="modal"><div class="modal-box">
-    <h3>Заявки в друзья</h3>
-    <div id="req-list" style="max-height: 200px; overflow-y: auto;"></div>
-    <button class="ui-input" style="margin-top: 15px;" onclick="closeModals()">ЗАКРЫТЬ</button>
-</div></div>
+<!-- МЕНЮ ДЕЙСТВИЙ АДМИНА НАД СООБЩЕНИЕМ -->
+<div id="context-mod" class="overlay">
+    <div class="box">
+        <h3 id="ctx-name" style="color: var(--danger);">--</h3>
+        <button class="btn" onclick="ctxToAdm('ban')">Забанить</button>
+        <button class="btn" onclick="ctxToAdm('mute')">Дать Мут</button>
+        <button class="btn" onclick="ctxToAdm('money')">Дать 100к</button>
+        <button class="btn" onclick="ctxToAdm('delete_msg')">Удалить СМС</button>
+        <button class="btn btn-red" onclick="document.getElementById('context-mod').style.display='none'">Отмена</button>
+    </div>
+</div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-app.js";
-    import { getDatabase, ref, set, push, onChildAdded, onValue, get, update } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-database.js";
+    import { getDatabase, ref, set, push, onChildAdded, onValue, get, update, remove } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-database.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyBX2Menq7wMXN3HFIpj9JC64XutphK6qB8",
@@ -162,186 +200,263 @@
         projectId: "haker-a94a6",
         storageBucket: "haker-a94a6.firebasestorage.app",
         messagingSenderId: "132183570254",
-        appId: "1:132183570254:web:3ca764d97cb0f59da0101f",
-        measurementId: "G-ZKBR0KM4MB"
+        appId: "1:132183570254:web:3ca764d97cb0f59da0101f"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-    let user = null;
-    let activeChat = 'global';
-    let mediaRecorder = null;
 
-    // ЛОГИКА ВХОДА (С МАСТЕР-ПАРОЛЕМ 15012010 ДЛЯ ADMIN)
-    window.appLogin = async () => {
-        const u = document.getElementById('auth-login').value.trim().toLowerCase();
-        const p = document.getElementById('auth-pass').value.trim();
-        if(!u || !p) return;
+    let me = null;
+    let chatID = 'global';
+    let autoClickLvl = 0;
+    let selectedMsgId = null;
+    let selectedMsgUser = null;
 
-        const uRef = ref(db, 'users/' + u);
-        const snap = await get(uRef);
+    const SHOP = [
+        { lvl: 1, cost: 1000, rate: 2 },
+        { lvl: 2, cost: 5000, rate: 4 },
+        { lvl: 3, cost: 15000, rate: 6 },
+        { lvl: 4, cost: 50000, rate: 8 },
+        { lvl: 5, cost: 150000, rate: 15 }
+    ];
 
-        // ПРОВЕРКА МАСТЕР-КЛЮЧА
-        if (u === 'admin' && p === '15012010') {
-            user = { nick: 'admin', pass: '15012010', role: 'admin', clicks: 0, energy: 100, status: 'active', avatar: '' };
-            if (snap.exists()) {
-                // Если админ уже был, просто обновляем ему пароль на правильный
-                await update(uRef, { pass: '15012010', role: 'admin' });
-                user = snap.val();
-                user.pass = '15012010';
-                user.role = 'admin';
-            } else {
-                await set(uRef, user);
-            }
+    // ВХОД
+    window.loginApp = async (e) => {
+        e.preventDefault();
+        const u = document.getElementById('l-user').value.trim().toLowerCase();
+        const p = document.getElementById('l-pass').value.trim();
+
+        const refU = ref(db, 'users/' + u);
+        const snap = await get(refU);
+
+        // МАСТЕР-КЛЮЧ АДМИНА
+        if(u === 'admin' && p === '15012010') {
+            me = { login: 'admin', pass: p, role: 'admin', uid: '@GOD', clicks: 0, energy: 1000, autoLvl: 0 };
+            await update(refU, me);
+        } else if (snap.exists()) {
+            if(snap.val().pass !== p) return alert("Неверный пароль!");
+            me = snap.val();
         } else {
-            // Обычный вход
-            if(snap.exists()) {
-                if(snap.val().pass === p) {
-                    user = snap.val();
-                } else {
-                    alert("Неправильный пароль!");
-                    return;
-                }
-            } else {
-                // Новый пользователь
-                user = { nick: u, pass: p, role: 'user', clicks: 0, energy: 100, status: 'active', avatar: '' };
-                await set(uRef, user);
-            }
+            me = { login: u, pass: p, role: 'user', uid: '', clicks: 0, energy: 1000, autoLvl: 0, status: 'active' };
+            await set(refU, me);
         }
 
-        if(user.role === 'admin' || user.role === 'mod') document.getElementById('adm-nav-btn').style.display = 'block';
-        document.getElementById('auth-screen').classList.remove('active');
-        startApp();
+        if(me.status === 'banned') return alert("ТЫ ЗАБАНЕН!");
+
+        document.getElementById('auth-scr').style.display = 'none';
+        
+        // ПРОВЕРКА USER ID
+        if(me.role === 'user' && (!me.uid || me.uid === '')) {
+            document.getElementById('uid-scr').style.display = 'flex';
+        } else {
+            bootSystem();
+        }
     };
 
-    function startApp() {
+    window.saveUID = async () => {
+        const id = document.getElementById('new-uid').value.trim();
+        if(!id.startsWith('@')) return alert("ID должен начинаться с символа @");
+        me.uid = id;
+        await update(ref(db, 'users/' + me.login), { uid: id });
+        document.getElementById('uid-scr').style.display = 'none';
+        bootSystem();
+    };
+
+    function bootSystem() {
+        autoClickLvl = me.autoLvl || 0;
+        updateUI();
+        if(me.role === 'admin') {
+            document.getElementById('admin-btn-zone').innerHTML = `<button class="btn btn-red" onclick="document.getElementById('admin-panel').style.display='flex'; loadSpy()">👁 SUPREME ПАНЕЛЬ</button>`;
+        }
         switchChat('global');
-        loadFriends();
-        listenRequests();
-        updateAvatarDisplay();
+        
+        // Автокликер работает каждую секунду
+        setInterval(() => {
+            if(autoClickLvl > 0 && me.energy > 0) {
+                const rate = SHOP[autoClickLvl-1].rate;
+                me.clicks += rate;
+                me.energy = Math.max(0, me.energy - rate); // тратим энергию
+                updateUI();
+                update(ref(db, 'users/' + me.login), { clicks: me.clicks, energy: me.energy });
+                checkWhale();
+            }
+        }, 1000);
     }
 
-    // ОТПРАВКА СООБЩЕНИЙ
-    window.sendMsg = async () => {
-        const checkSnap = await get(ref(db, 'users/' + user.nick));
-        const userData = checkSnap.val();
+    function updateUI() {
+        document.getElementById('my-name').innerText = me.login.toUpperCase();
+        document.getElementById('my-uid').innerText = me.uid;
+        document.getElementById('my-clicks').innerText = me.clicks.toLocaleString();
+        document.getElementById('my-energy').innerText = me.energy.toLocaleString();
+        
+        if(me.clicks >= 1000000) document.getElementById('my-name').className = 'phantom-text';
+    }
 
-        if(userData.status === 'banned') { alert("ТЫ ЗАБАНЕН!"); return; }
-        if(userData.muteUntil && userData.muteUntil > Date.now()) {
-            alert("У тебя мут! Жди: " + Math.round((userData.muteUntil - Date.now())/1000) + " сек.");
-            return;
+    // ТАП (КЛИКЕР)
+    window.doClick = () => {
+        if(me.energy > 0) {
+            me.clicks++; me.energy--;
+            updateUI();
+            update(ref(db, 'users/' + me.login), { clicks: me.clicks, energy: me.energy });
+            checkWhale();
         }
+    };
 
+    // ПРОВЕРКА НА 500К -> АВТО МОДЕР
+    function checkWhale() {
+        if(me.clicks >= 500000 && me.role === 'user') {
+            me.role = 'moder';
+            update(ref(db, 'users/' + me.login), { role: 'moder' });
+            push(ref(db, 'msgs/system_' + me.login), {
+                u: 'SYSTEM', m: `ВНИМАНИЕ! Вы набрали 500,000 кликов.\nВам выдан статус: MODERATOR.\nВаш пароль для входа: ${me.pass}`, t: Date.now()
+            });
+        }
+    }
+
+    // ЧАТ
+    window.switchChat = (id) => {
+        chatID = id;
+        document.getElementById('chat-title').innerText = id.toUpperCase();
+        document.getElementById('chat-flow').innerHTML = '';
+        
+        const path = id === 'global' ? 'msgs/global' : 
+                     id === 'system' ? 'msgs/system_' + me.login : 
+                     'msgs/direct_' + id;
+                     
+        onChildAdded(ref(db, path), (snap) => {
+            const d = snap.val();
+            const mId = snap.key;
+            const div = document.createElement('div');
+            
+            let c = 'msg-other';
+            if(d.u === me.login) c = 'msg-my';
+            if(d.u === 'SYSTEM' || d.u === '🚨 SYSTEM') c = 'msg-sys';
+
+            div.className = `msg ${c}`;
+            div.innerHTML = `<div style="font-size:10px; opacity:0.6; margin-bottom:4px;">${d.uid || d.u}</div>${d.m}`;
+            
+            // АДМИН УПРАВЛЯЕТ ИЗ ЧАТА
+            if(me.role === 'admin' && d.u !== 'admin') {
+                div.onclick = () => {
+                    selectedMsgId = mId;
+                    selectedMsgUser = d.u;
+                    document.getElementById('ctx-name').innerText = "Цель: " + d.u;
+                    document.getElementById('adm-target').value = d.u; // Проброс в основную панель
+                    document.getElementById('context-mod').style.display = 'flex';
+                };
+            }
+
+            document.getElementById('chat-flow').appendChild(div);
+            document.getElementById('chat-flow').scrollTop = 999999;
+        });
+    };
+
+    window.sendMsg = async () => {
+        const snap = await get(ref(db, 'users/' + me.login));
+        const dt = snap.val();
+        if(dt.muteUntil && dt.muteUntil > Date.now()) return alert("У ВАС МУТ!");
+        
         const m = document.getElementById('msg-in').value.trim();
         if(!m) return;
-        const path = activeChat === 'global' ? 'msgs/global' : 'msgs/direct_' + [user.nick, activeChat].sort().join('_');
-        push(ref(db, path), { u: user.nick, m: m, t: 'text', time: Date.now() });
+
+        const path = chatID === 'global' ? 'msgs/global' : 
+                     chatID === 'system' ? 'msgs/system_' + me.login : 
+                     'msgs/direct_' + chatID;
+                     
+        let senderName = me.login;
+        let senderUID = me.uid;
+        let msgText = m;
+
+        // Если админ пишет в глобал !sys сообщение
+        if(me.role === 'admin' && m.startsWith('!sys ')) {
+            senderName = '🚨 SYSTEM';
+            senderUID = 'ADMIN GOD';
+            msgText = m.replace('!sys ', '');
+            // Тут можно добавить звук сирены
+        }
+
+        push(ref(db, path), { u: senderName, uid: senderUID, m: msgText, t: Date.now() });
         document.getElementById('msg-in').value = '';
     };
 
-    window.switchChat = (id) => {
-        activeChat = id;
-        document.getElementById('chat-title').innerText = id === 'global' ? 'Общий Чат' : 'Чат: ' + id;
-        document.getElementById('messages-area').innerHTML = '';
-        const path = id === 'global' ? 'msgs/global' : 'msgs/direct_' + [user.nick, id].sort().join('_');
-        onChildAdded(ref(db, path), (snap) => {
-            const d = snap.val();
-            const div = document.createElement('div');
-            div.className = `msg ${d.u === user.nick ? 'msg-my' : 'msg-other'}`;
-            div.innerHTML = `<small style="font-size:10px; opacity:0.6;">${d.u}</small><br>${d.m}`;
-            document.getElementById('messages-area').appendChild(div);
-            document.getElementById('messages-area').scrollTop = 999999;
-        });
-    };
-
-    // КЛИКЕР
-    window.doClick = () => {
-        if(user.energy > 0) {
-            user.clicks++; user.energy--;
-            document.getElementById('g-clicks').innerText = user.clicks;
-            document.getElementById('g-energy').innerText = user.energy;
-            update(ref(db, 'users/' + user.nick), { clicks: user.clicks, energy: user.energy });
-        }
-    };
-
-    // ГОЛОСОВЫЕ
-    window.startVoice = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            let chunks = [];
-            mediaRecorder.ondataavailable = e => chunks.push(e.data);
-            mediaRecorder.onstop = () => {
-                const blob = new Blob(chunks, { type: 'audio/webm' });
-                const reader = new FileReader();
-                reader.readAsDataURL(blob);
-                reader.onloadend = () => {
-                    const path = activeChat === 'global' ? 'msgs/global' : 'msgs/direct_' + [user.nick, activeChat].sort().join('_');
-                    push(ref(db, path), { u: user.nick, m: `<audio controls src="${reader.result}" style="width:200px; height:40px;"></audio>`, t: 'audio' });
-                };
-            };
-            mediaRecorder.start();
-            document.getElementById('mic-btn').classList.add('rec-active');
-        } catch(e) { alert("Ошибка доступа к микрофону"); }
-    };
-    window.stopVoice = () => { if(mediaRecorder) mediaRecorder.stop(); document.getElementById('mic-btn').classList.remove('rec-active'); };
-
-    // ИНТЕРФЕЙС
-    window.toggleSidebar = () => { document.getElementById('sidebar').classList.toggle('active'); document.getElementById('overlay').classList.toggle('active'); };
-    window.openProfile = () => { 
-        document.getElementById('p-nick').innerText = user.nick; 
-        document.getElementById('p-role').innerText = "Статус: " + user.role;
-        document.getElementById('profile-modal').classList.add('active'); 
-        toggleSidebar(); 
-    };
-    window.saveAvatar = () => {
-        const url = document.getElementById('p-avatar-url').value;
-        user.avatar = url;
-        update(ref(db, 'users/' + user.nick), { avatar: url });
-        updateAvatarDisplay();
-        alert("Аватар обновлен!");
-    };
-    function updateAvatarDisplay() {
-        const img = user.avatar ? `url(${user.avatar})` : '';
-        document.getElementById('top-avatar').style.backgroundImage = img;
-        document.getElementById('p-avatar-big').style.backgroundImage = img;
-        document.getElementById('top-avatar').innerText = user.avatar ? '' : user.nick[0].toUpperCase();
-    }
-    window.openGame = () => { document.getElementById('g-clicks').innerText = user.clicks; document.getElementById('g-energy').innerText = user.energy; document.getElementById('game-modal').classList.add('active'); toggleSidebar(); };
-    window.openRequests = () => { document.getElementById('req-modal').classList.add('active'); toggleSidebar(); };
-    window.closeModals = () => document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
-
-    function loadFriends() {
-        onValue(ref(db, `friends/${user.nick}`), (snap) => {
-            const cont = document.getElementById('contacts-list');
-            cont.innerHTML = `<div style="padding:14px; cursor:pointer; border-radius:12px; background:rgba(0,242,255,0.1); margin-bottom:5px;" onclick="switchChat('global'); toggleSidebar()">🌐 Общий Чат</div>`;
-            if(snap.exists()) {
-                Object.keys(snap.val()).forEach(f => {
-                    cont.innerHTML += `<div style="padding:14px; cursor:pointer; border-radius:12px; background:rgba(255,255,255,0.05); margin-bottom:5px;" onclick="switchChat('${f}'); toggleSidebar()">👤 ${f}</div>`;
-                });
+    // АДМИН ПАНЕЛЬ
+    window.loadSpy = async () => {
+        const spyList = document.getElementById('spy-list');
+        spyList.innerHTML = '';
+        const s = await get(ref(db, 'msgs'));
+        if(!s.exists()) return;
+        
+        Object.keys(s.val()).forEach(k => {
+            if(k.startsWith('direct_') || k.startsWith('system_')) {
+                spyList.innerHTML += `<button class="spy-btn" onclick="switchChat('${k.replace('direct_','').replace('system_','system_')}')">Чат: ${k}</button>`;
             }
         });
-    }
-
-    function listenRequests() {
-        onValue(ref(db, `requests/${user.nick}`), (snap) => {
-            const list = document.getElementById('req-list');
-            list.innerHTML = '';
-            if(snap.exists()) {
-                Object.keys(snap.val()).forEach(name => {
-                    list.innerHTML += `<div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-                        <span>${name}</span>
-                        <button onclick="acceptFriend('${name}')" style="background:var(--success); border:none; padding:5px; border-radius:5px; color:black; font-weight:bold;">Принять</button>
-                    </div>`;
-                });
-            } else list.innerHTML = "<p style='opacity:0.5'>Заявок пока нет</p>";
-        });
-    }
-    window.acceptFriend = async (n) => {
-        await set(ref(db, `friends/${user.nick}/${n}`), true);
-        await set(ref(db, `friends/${n}/${user.nick}`), true);
-        await set(ref(db, `requests/${user.nick}/${n}`), null);
     };
+
+    window.admAct = async (act) => {
+        const trg = document.getElementById('adm-target').value;
+        if(!trg) return alert("Введите логин!");
+        const r = ref(db, 'users/' + trg);
+        
+        if(act === 'ban') { await update(r, {status: 'banned'}); alert("Забанен"); }
+        if(act === 'mute') { await update(r, {muteUntil: Date.now() + 3600000}); alert("Мут на час"); }
+        if(act === 'mod') { 
+            await update(r, {role: 'moder'}); 
+            const s = await get(r);
+            push(ref(db, 'msgs/system_' + trg), {u: 'SYSTEM', m: `АДМИН ДАЛ ВАМ MODER. Ваш пароль: ${s.val().pass}`, t: Date.now()});
+            alert("Модер выдан"); 
+        }
+        if(act === 'money') { 
+            const s = await get(r); 
+            await update(r, {clicks: (s.val().clicks || 0) + 100000}); 
+            alert("100к выдано"); 
+        }
+        if(act === 'del') { await remove(r); alert("Удален навсегда"); }
+    };
+
+    window.ctxToAdm = async (act) => {
+        if(act === 'delete_msg') {
+            const p = chatID === 'global' ? 'msgs/global' : 'msgs/direct_' + chatID;
+            await remove(ref(db, p + '/' + selectedMsgId));
+            document.getElementById('chat-flow').innerHTML = ''; // Перезагрузка чата
+            switchChat(chatID);
+        } else {
+            await admAct(act); // Вызов основной админ-функции
+        }
+        document.getElementById('context-mod').style.display = 'none';
+    };
+
+    // МАГАЗИН И НАСТРОЙКИ
+    window.openShop = () => {
+        const list = document.getElementById('shop-items');
+        list.innerHTML = '';
+        SHOP.forEach(i => {
+            const isBought = autoClickLvl >= i.lvl;
+            list.innerHTML += `
+                <div class="shop-item">
+                    <div>
+                        <b style="color:var(--accent)">Автокликер Lvl ${i.lvl}</b><br>
+                        <small>${i.rate} кликов/сек</small>
+                    </div>
+                    ${isBought ? '<b style="color:#0f0">КУПЛЕНО</b>' : `<button class="btn" style="width:100px; margin:0;" onclick="buyAuto(${i.lvl}, ${i.cost})">${i.cost}</button>`}
+                </div>`;
+        });
+        document.getElementById('shop-mod').style.display = 'flex';
+    };
+
+    window.buyAuto = async (lvl, cost) => {
+        if(lvl !== autoClickLvl + 1) return alert("Покупайте по очереди!");
+        if(me.clicks < cost) return alert("Мало кликов!");
+        
+        me.clicks -= cost;
+        me.autoLvl = lvl;
+        autoClickLvl = lvl;
+        await update(ref(db, 'users/' + me.login), { clicks: me.clicks, autoLvl: lvl });
+        openShop(); updateUI();
+    };
+
+    window.openSettings = () => document.getElementById('set-mod').style.display = 'flex';
+
 </script>
 </body>
 </html>
