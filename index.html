@@ -844,8 +844,14 @@
       constructor(prefix) {
         this.prefix = prefix;
         this.versionKey = `${prefix}app_version`;
+        this.firebase = null;
+        this.firebaseReady = false;
+        this.firebaseFailed = false;
+        this.watchers = {};
       }
       key(path) { return this.prefix + path.replaceAll("/", "_"); }
+      firebasePath(path) { return path.replace(/[.#$\[\]]/g, "_"); }
+      isLocalOnly(path) { return ["session", "seeded"].includes(path) || path.startsWith("app_"); }
       get(path, fallback = null) {
         const raw = localStorage.getItem(this.key(path));
         if (raw === null || raw === undefined) return fallback;
@@ -853,6 +859,7 @@
       }
       set(path, value) {
         localStorage.setItem(this.key(path), JSON.stringify(value));
+        this.remoteSet(path, value);
         return value;
       }
       update(path, patch) {
@@ -867,6 +874,9 @@
       }
       remove(path) {
         localStorage.removeItem(this.key(path));
+        if (this.firebaseReady) {
+          this.firebase.remove(this.firebase.ref(this.firebase.db, this.firebasePath(path))).catch(() => {});
+        }
       }
       listKeys(prefixPath) {
         const prefix = this.key(prefixPath);
@@ -896,6 +906,92 @@
         this.set(`users/${user.id}`, user);
         const ids = this.get("users_index", []);
         if (!ids.includes(user.id)) this.set("users_index", [...ids, user.id]);
+      }
+      async initFirebase(ui) {
+        if (this.firebaseReady || this.firebaseFailed) return;
+        try {
+          const appMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js");
+          const dbMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js");
+          const firebaseApp = appMod.initializeApp({
+            apiKey: CONFIG.firebaseApiKey,
+            databaseURL: CONFIG.firebaseDatabaseUrl
+          });
+          this.firebase = {
+            db: dbMod.getDatabase(firebaseApp),
+            ref: dbMod.ref,
+            set: dbMod.set,
+            get: dbMod.get,
+            child: dbMod.child,
+            onValue: dbMod.onValue,
+            remove: dbMod.remove
+          };
+          this.firebaseReady = true;
+          ui.toast("Firebase подключён");
+          await this.pullCoreFromFirebase();
+          this.watchCoreFirebase();
+        } catch (error) {
+          this.firebaseFailed = true;
+          ui.toast("Firebase недоступен, включён офлайн-режим");
+        }
+      }
+      remoteSet(path, value) {
+        if (!this.firebaseReady || this.isLocalOnly(path)) return;
+        this.firebase.set(this.firebase.ref(this.firebase.db, this.firebasePath(path)), value).catch(() => {});
+      }
+      async remoteGet(path) {
+        if (!this.firebaseReady) return null;
+        const snap = await this.firebase.get(this.firebase.ref(this.firebase.db, this.firebasePath(path)));
+        return snap.exists() ? snap.val() : null;
+      }
+      async pullCoreFromFirebase() {
+        const paths = ["users_index", "global_chat/messages", "moderators", "moderators_stats", "firebase_moderators_credentials", "friend_requests_index", "violations", "mod_logs"];
+        for (const path of paths) {
+          const value = await this.remoteGet(path);
+          if (value !== null) localStorage.setItem(this.key(path), JSON.stringify(value));
+        }
+        const privateChats = await this.remoteGet("private_chats");
+        if (privateChats) this.storePrivateChats(privateChats);
+        const ids = this.get("users_index", []);
+        for (const id of ids) {
+          const user = await this.remoteGet(`users/${id}`);
+          if (user) localStorage.setItem(this.key(`users/${id}`), JSON.stringify(user));
+        }
+      }
+      storePrivateChats(privateChats) {
+        Object.entries(privateChats || {}).forEach(([chatId, chatNode]) => {
+          if (chatNode && chatNode.messages) {
+            localStorage.setItem(this.key(`private_chats/${chatId}/messages`), JSON.stringify(chatNode.messages));
+          }
+        });
+      }
+      watch(path, handler) {
+        if (!this.firebaseReady || this.watchers[path]) return;
+        this.watchers[path] = this.firebase.onValue(this.firebase.ref(this.firebase.db, this.firebasePath(path)), snap => {
+          if (!snap.exists()) return;
+          const value = snap.val();
+          localStorage.setItem(this.key(path), JSON.stringify(value));
+          handler(value);
+        });
+      }
+      watchCoreFirebase() {
+        ["users_index", "global_chat/messages", "moderators", "moderators_stats", "firebase_moderators_credentials", "friend_requests_index", "violations", "mod_logs"].forEach(path => {
+          this.watch(path, () => {
+            if (S.user && ["chat", "friends", "admin", "moderator"].includes(S.currentScreen)) app.ui.renderScreen(S.currentScreen);
+          });
+        });
+        this.watch("private_chats", value => {
+          this.storePrivateChats(value);
+          if (S.user && ["chat", "admin", "moderator"].includes(S.currentScreen)) app.ui.renderScreen(S.currentScreen);
+        });
+      }
+      watchCurrentUser(userId, ui) {
+        this.watch(`users/${userId}`, user => {
+          if (!S.user || S.user.id !== userId) return;
+          const oldScreen = S.currentScreen;
+          S.user = { ...S.user, ...user };
+          ui.refreshHeader();
+          if (["friends", "profile", "settings"].includes(oldScreen)) ui.renderScreen(oldScreen);
+        });
       }
       findUserByLogin(login) {
         const normalized = String(login || "").trim().toLowerCase();
@@ -1048,16 +1144,6 @@
           badge.classList.toggle("hidden", !S.user.unreadSystem);
         }
       }
-      syncLiveState() {
-        if (!S.user) return;
-        const fresh = this.db.get(`users/${S.user.id}`, null);
-        if (!fresh) return;
-        const oldCoins = S.user.coins;
-        S.user = { ...S.user, ...fresh };
-        this.refreshHeader();
-        if (oldCoins !== S.user.coins && S.currentScreen !== "admin") this.toast("Баланс обновлён");
-        if (["profile", "friends", "moderator", "admin"].includes(S.currentScreen)) this.renderScreen(S.currentScreen);
-      }
       roleLabel(user) {
         if (user.role === "admin") return "Администратор";
         if (user.role === "moderator") return `Модератор ${user.rank || "ml.модер"}`;
@@ -1166,6 +1252,7 @@
         const away = Math.max(0, now - (user.lastLogin || now));
         S.user = user;
         this.db.set("session", { userId: user.id, at: now });
+        this.db.watchCurrentUser(user.id, this.ui);
         user.lastLogin = now;
         app.economy.applyOfflineEarnings(away);
         this.ui.saveCurrentUser();
@@ -1522,8 +1609,9 @@
         document.getElementById("chatForm").onsubmit = e => { e.preventDefault(); this.send(); };
         this.renderList();
         this.renderMessages();
+        this.db.watch(this.path(), () => this.renderMessages());
         clearInterval(this.poll);
-        this.poll = setInterval(() => { if (S.currentScreen === "chat") this.renderMessages(); }, 5000);
+        this.poll = setInterval(() => { if (S.currentScreen === "chat" && !this.db.firebaseReady) this.renderMessages(); }, 5000);
       }
       renderList() {
         if (app.friends) app.friends.syncCurrentUser();
@@ -2205,10 +2293,24 @@
         this.db.seed();
         this.db.checkVersion(this.ui);
         this.auth.init();
+        this.db.initFirebase(this.ui).then(() => {
+          if (S.user) this.db.watchCurrentUser(S.user.id, this.ui);
+          if (S.currentScreen) this.ui.renderScreen(S.currentScreen);
+        });
         S.timers.push(setInterval(() => this.economy.regenerateEnergy(), 1000));
         S.timers.push(setInterval(() => this.economy.passiveTick(), 1000));
-        S.timers.push(setInterval(() => this.ui.syncLiveState(), 3000));
         S.timers.push(setInterval(() => this.ui.saveCurrentUser(), 15000));
+        window.addEventListener("storage", event => {
+          if (!event.key || !event.key.startsWith(CONFIG.storagePrefix) || !S.user) return;
+          if (event.key === this.db.key(`users/${S.user.id}`)) {
+            const fresh = this.db.get(`users/${S.user.id}`, null);
+            if (fresh) {
+              S.user = { ...S.user, ...fresh };
+              this.ui.refreshHeader();
+            }
+          }
+          if (["chat", "friends", "admin", "moderator"].includes(S.currentScreen)) this.ui.renderScreen(S.currentScreen);
+        });
         window.addEventListener("beforeunload", () => this.ui.saveCurrentUser());
       }
     }
