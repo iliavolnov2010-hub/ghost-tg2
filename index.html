@@ -249,14 +249,11 @@
         delete this.mem[key];
         try { localStorage.removeItem(key); } catch {}
       }
-
-      safeArray(path){
-        const data=this.g(path, []);
-        return Array.isArray(data) ? data : [];
-      }
-
       id(p="id"){ return p + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,8); }
-      allUsers(){ return (this.g("users_index", []) || []).map(id => this.g(`users/${id}`, null)).filter(Boolean); }
+      allUsers(){
+        const ids = Array.isArray(this.g("users_index", [])) ? this.g("users_index", []) : [];
+        return ids.map(id => this.g(`users/${id}`, null)).filter(Boolean);
+      }
       saveUser(u){
         this.s(`users/${u.id}`, u);
         const rawIds = this.g("users_index", []);
@@ -269,7 +266,9 @@
         const dev = userFactory("zuhra","755275260","user");
         dev.vkId = CFG.devId; dev.vk = CFG.devVk; dev.prefixes = ["DEV","LEGEND"]; dev.activePrefix = "DEV"; dev.nickStyles = ["angel"]; dev.activeNickStyle = "angel";
         this.saveUser(dev);
-        this.s("global_chat/messages", [{ id: this.id("msg"), senderId: "system", text: "Добро пожаловать в TgXq", at: Date.now(), system: true }]);
+        this.s("global_chat/messages", [
+          { id: this.id("msg"), senderId: "system", text: "Добро пожаловать в TgXq", at: Date.now(), system: true }
+        ]);
         this.s("moderators", {}); this.s("moderators_stats", {}); this.s("mod_logs", []); this.s("friend_requests_index", {}); this.s("violations", {});
         this.s("private_chat_index", []);
         this.s("moderators_credentials", {}); this.s("seeded", true);
@@ -400,14 +399,7 @@
         if (sc === "friends") return app.friends.render(host);
         if (sc === "profile") return app.profile.render(host);
         if (sc === "settings") return app.settings.render(host);
-        if (sc === "admin") 
-try{
-  return app.admin.render(host);
-}catch(err){
-  console.error(err);
-  host.innerHTML=`<div class="card"><h2>Админ панель исправлена</h2><div class="meta">${err.message}</div></div>`;
-}
-
+        if (sc === "admin") return app.admin.render(host);
         if (sc === "moderator") return app.moder.render(host);
       }
     }
@@ -464,6 +456,14 @@ try{
         const u = userFactory(login, pass, "user");
         u.vk = vk.startsWith("http") ? vk : ""; u.vkId = (vk.match(/\d+/) || [""])[0];
         this.db.saveUser(u);
+
+        let idx=this.db.g("users_index", []);
+        if(!Array.isArray(idx)) idx=[];
+        if(!idx.includes(u.id)){
+          idx.push(u.id);
+          this.db.s("users_index", idx);
+        }
+
         this.loginUser(u);
       }
       loginUser(u, restored=false){
@@ -778,7 +778,7 @@ try{
           this.ui.saveMe();
         }
         this.detectBad(txt);
-        const arr = this.db.g(this.path(), []);
+        const arr = Array.isArray(this.db.g(this.path(), [])) ? this.db.g(this.path(), []) : [];
         arr.push({ id: this.db.id("msg"), senderId: S.user.id, text: this.ui.esc(txt), at: Date.now() });
         this.db.s(this.path(), arr);
         inp.value = ""; this.renderMsgs();
@@ -786,7 +786,7 @@ try{
       detectBad(txt){
         const l = txt.toLowerCase();
         if (!DATA.badWords.some(w => l.indexOf(w) !== -1)) return;
-        const v = Array.isArray(this.db.g("violations", [])) ? this.db.g("violations", []) : [];
+        const v = this.db.g("violations", []);
         v.push({ id: this.db.id("v"), offenderId: S.user.id, text: this.ui.esc(txt), chatType: S.chatType, chatId: S.chatId, at: Date.now(), status: "new" });
         this.db.s("violations", v);
         this.db.allUsers().filter(u => u.role === "admin" || u.role === "moderator").forEach(u => this.sendSystem(u.id, `Анти-мат: ${S.user.login}: "${txt.slice(0,120)}"`));
@@ -808,7 +808,7 @@ try{
         const box = document.getElementById("msgs"); if (!box) return;
         const ttl = document.getElementById("chatTitle");
         if (ttl) ttl.textContent = S.chatType === "global" ? "Общий чат" : S.chatType === "system" ? "Системные уведомления" : S.chatType === "review" ? "Просмотр ЛС" : "Личный чат";
-        const arr = this.db.g(this.path(), []);
+        const arr = Array.isArray(this.db.g(this.path(), [])) ? this.db.g(this.path(), []) : [];
         box.innerHTML = arr.map(m => {
           if (m.system || m.senderId === "system") return `<div class="sys">${this.ui.esc(m.text)}</div>`;
           const me = m.senderId === S.user.id;
@@ -857,7 +857,14 @@ try{
         const box = document.getElementById("sr");
         if (!q.trim()){ box.innerHTML = ""; return; }
         const ql = String(q || "").toLowerCase();
-        const users = this.db.allUsers().filter(u => u.id !== S.user.id && !S.user.friends[u.id] && !(S.user.outgoingRequests||{})[u.id] && !(u.requests||{})[S.user.id] && String(u.login || "").toLowerCase().indexOf(ql) !== -1);
+        const users = this.db.allUsers().filter(u => {
+          if(!u || !u.id) return false;
+          return u.id !== S.user.id &&
+          !(S.user.friends||{})[u.id] &&
+          !(S.user.outgoingRequests||{})[u.id] &&
+          !((u.requests||{})[S.user.id]) &&
+          String(u.login || "").toLowerCase().includes(ql);
+        });
         box.innerHTML = users.map(u => `<div class="listRow"><div>${this.ui.nameBy(u)}<div class="meta">${this.ui.roleText(u)}</div></div><button class="pri" data-add="${u.id}">➕</button></div>`).join("") || `<div class="meta">Никого не найдено</div>`;
         box.querySelectorAll("[data-add]").forEach(b => b.onclick = () => this.req(b.dataset.add));
       }
@@ -993,7 +1000,7 @@ try{
       }
       refresh(){ if (S.screen === "moderator") app.ui.renderScreen("moderator"); if (S.screen === "admin") app.ui.renderScreen("admin"); }
       render(el){
-        const r=this.rights(), users=this.db.allUsers().filter(u=>u.id!==S.user.id), vio=((Array.isArray(this.db.g("violations",[])) ? this.db.g("violations",[]) : [])).slice(-12).reverse();
+        const r=this.rights(), users=this.db.allUsers().filter(u=>u.id!==S.user.id), vio=this.db.g("violations",[]).slice(-12).reverse();
         el.innerHTML = `<div class="grid">
           <div class="card"><h3 class="title">Панель модератора</h3><div class="meta">Права: warn ${r.warn?"да":"нет"}, mute ${r.mute?"да":"нет"}, ban ${r.ban?"да":"нет"}.</div></div>
           <div class="card"><h3 class="title">Управление игроками</h3>
@@ -1037,7 +1044,7 @@ try{
       }
       render(el){
         if (S.user.role !== "admin") return el.innerHTML = `<div class="meta">Нет доступа</div>`;
-        const users=this.db.allUsers(), creds=Object.values(this.db.g("moderators_credentials", {})), logs=((Array.isArray(this.db.g("mod_logs",[])) ? this.db.g("mod_logs",[]) : [])).slice(-20).reverse(), v=((Array.isArray(this.db.g("violations",[])) ? this.db.g("violations",[]) : [])).slice(-14).reverse();
+        const users=this.db.allUsers(), creds=Object.values(this.db.g("moderators_credentials", {})), logs=this.db.g("mod_logs",[]).slice(-20).reverse(), v=this.db.g("violations",[]).slice(-14).reverse();
         const onlyMods = users.filter(u => u.role === "moderator");
         const onlyUsers = users.filter(u => u.role !== "moderator" && u.role !== "admin");
         el.innerHTML = `<div class="grid">
