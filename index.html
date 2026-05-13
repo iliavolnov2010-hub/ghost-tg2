@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TgXq</title>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&display=swap');
     :root{
@@ -120,11 +122,8 @@
       .top{grid-template-columns:1fr auto}.coins{grid-column:1/-1;justify-self:center}
       .two{grid-template-columns:1fr}.chatShell{grid-template-columns:1fr}.nav{grid-template-columns:repeat(7,1fr)}
     }
+    .error-msg{color:var(--bad);text-align:center;padding:20px}
   </style>
-
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-
 </head>
 <body>
   <div id="root" class="root"></div>
@@ -132,16 +131,41 @@
   <div id="toastLayer" class="toastLayer"></div>
 
   <script>
-    const CFG = {
-      app: "TgXq",
-      v: "31.1.0",
-      pfx: "tgxq_v31_",
+    console.log('🚀 TgXq App Starting...');
+    
+    const firebaseConfig = {
       apiKey: "AIzaSyBX2Menq7wMXN3HFIpj9JC64XutphK6qB8",
-      dbUrl: "https://haker-a94a6-default-rtdb.europe-west1.firebasedatabase.app",
-      devVk: "https://vk.com/id755275260",
-      devId: "755275260",
-      adminLogin: "admin",
-      adminPassword: "15012010"
+      authDomain: "haker-a94a6.firebaseapp.com",
+      databaseURL: "https://haker-a94a6-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "haker-a94a6",
+      storageBucket: "haker-a94a6.firebasestorage.app",
+      messagingSenderId: "132183570254",
+      appId: "1:132183570254:web:3ca764d97cb0f59da0101f",
+      measurementId: "G-ZKBR0KM4MB"
+    };
+    
+    let fbDB = null;
+    try {
+      if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+      }
+      fbDB = firebase.database();
+      console.log('✅ Firebase initialized');
+    } catch(e) {
+      console.error('❌ Firebase init error:', e);
+    }
+
+    // Безопасное преобразование данных Firebase в массив
+    function safeArray(val) {
+      if (Array.isArray(val)) return val;
+      if (val && typeof val === 'object') return Object.values(val);
+      return [];
+    }
+
+    const CFG = {
+      app: "TgXq", v: "31.1.0",
+      devVk: "https://vk.com/id755275260", devId: "755275260",
+      adminLogin: "admin", adminPassword: "15012010"
     };
 
     const DATA = {
@@ -227,983 +251,2278 @@
     const S = {
       user: null, screen: "clicker", shopTab: "upgrades",
       chatType: "global", chatId: "global", chatListMobile: true,
-      combo: 1, lastClick: 0, cps: [], blockedTo: 0, timers: []
+      combo: 1, lastClick: 0, cps: [], blockedTo: 0, timers: [],
+      fbListeners: {}, saveQueue: Promise.resolve()
     };
 
-    
-class DB {
-  constructor(p){
-    this.p = p;
-
-    const firebaseConfig = {
-      apiKey: CFG.apiKey,
-      databaseURL: CFG.dbUrl
-    };
-
-    if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
-    }
-
-    this.rdb = firebase.database();
-  }
-
-  path(path){
-    return this.p + String(path).replace(/\//g,"_");
-  }
-
-  async set(path, value){
-    await this.rdb.ref(this.path(path)).set(value);
-    return value;
-  }
-
-  async get(path, fb=null){
-    try{
-      const snap = await this.rdb.ref(this.path(path)).get();
-      if(snap.exists()) return snap.val();
-      return fb;
-    }catch(e){
-      return fb;
-    }
-  }
-
-  g(path, fb=null){
-    const raw = localStorage.getItem(this.path(path));
-    if(raw){
-      try{return JSON.parse(raw)}catch(e){}
-    }
-    return fb;
-  }
-
-  s(path, value){
-    localStorage.setItem(this.path(path), JSON.stringify(value));
-
-    this.set(path, value);
-
-    return value;
-  }
-
-  rm(path){
-    localStorage.removeItem(this.path(path));
-    this.rdb.ref(this.path(path)).remove();
-  }
-
-  id(p="id"){
-    return p + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,8);
-  }
-
-  async syncUsers(){
-    const snap = await this.rdb.ref(this.path("users_index")).get();
-
-    if(!snap.exists()) return [];
-
-    const ids = snap.val() || [];
-
-    for(const id of ids){
-      const us = await this.rdb.ref(this.path(`users/${id}`)).get();
-      if(us.exists()){
-        localStorage.setItem(this.path(`users/${id}`), JSON.stringify(us.val()));
-      }
-    }
-
-    localStorage.setItem(this.path("users_index"), JSON.stringify(ids));
-
-    return ids;
-  }
-
-  allUsers(){
-    const ids = this.g("users_index", []) || [];
-    return ids.map(id => this.g(`users/${id}`, null)).filter(Boolean);
-  }
-
-  saveUser(u){
-    this.s(`users/${u.id}`, u);
-
-    let ids = this.g("users_index", []);
-    if(!Array.isArray(ids)) ids=[];
-
-    if(!ids.includes(u.id)){
-      ids.push(u.id);
-      this.s("users_index", ids);
-    }
-  }
-
-  byLogin(login){
-    const x = String(login || "").trim().toLowerCase();
-    return this.allUsers().find(u => String(u.login||"").toLowerCase() === x) || null;
-  }
-
-  seed(){
-    if (this.g("seeded", false)) return;
-
-    const dev = userFactory("zuhra","755275260","user");
-
-    dev.vkId = CFG.devId;
-    dev.vk = CFG.devVk;
-
-    this.saveUser(dev);
-
-    this.s("global_chat/messages", [
-      {
-        id: this.id("msg"),
-        senderId: "system",
-        text: "Добро пожаловать в TgXq",
-        at: Date.now(),
-        system: true
-      }
-    ]);
-
-    this.s("seeded", true);
-  }
-
-  getChatIndex(){
-    const v = this.g("private_chat_index", []);
-    return Array.isArray(v) ? v : [];
-  }
-
-  rememberChat(chatId){
-    if (!chatId) return;
-
-    let idx = this.getChatIndex();
-
-    if(!idx.includes(chatId)){
-      idx.push(chatId);
-      this.s("private_chat_index", idx);
-    }
-  }
-}
-
-class UI
- {
-      constructor(db){ this.db=db; this.root=document.getElementById("root"); this.m=document.getElementById("modalLayer"); this.t=document.getElementById("toastLayer"); }
-      esc(v){ return String(v ?? "").replace(/[&<>"']/g, s => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[s])); }
-      toast(msg){ const e=document.createElement("div"); e.className="toast"; e.textContent=msg; this.t.appendChild(e); setTimeout(()=>e.remove(),3200); }
-      modal(title, body, actions=""){
-        this.m.className="modalLayer show";
-        this.m.innerHTML=`<div class="modal"><h2>${this.esc(title)}</h2>${body}<div class="grid two" style="margin-top:10px">${actions}<button class="ghost" id="closeModal">Закрыть</button></div></div>`;
-        document.getElementById("closeModal").onclick = () => this.closeModal();
-      }
-      closeModal(){ this.m.className="modalLayer"; this.m.innerHTML=""; }
-      roleText(u){ if (u.role === "admin") return "Администратор"; if (u.role === "moderator") return `Модератор ${u.rank||"ml.модер"}`; return "Игрок"; }
-      nClass(u){ return u.activeNickStyle ? `${u.activeNickStyle}-name` : ""; }
-      nameBy(uOrId){
-        const u = typeof uOrId === "string" ? this.db.g(`users/${uOrId}`, null) : uOrId;
-        if (!u) return "Система";
-        const dev = u.vkId === CFG.devId || u.vk === CFG.devVk;
-        const pref = u.activePrefix ? `<span class="tag">${this.esc(u.activePrefix)}</span> ` : "";
-        return `${pref}<span class="${this.nClass(u)}">${this.esc(u.login)}</span>${dev ? ` <span class="tag dev">DEV</span>` : ""}`;
-      }
-      saveMe(){
-        if (!S.user) return;
-        const fresh = this.db.g(`users/${S.user.id}`, null);
-        if (fresh){
-          S.user.friends = { ...(fresh.friends||{}), ...(S.user.friends||{}) };
-          S.user.requests = { ...(fresh.requests||{}), ...(S.user.requests||{}) };
-          S.user.outgoingRequests = { ...(fresh.outgoingRequests||{}), ...(S.user.outgoingRequests||{}) };
-          S.user.chats = [...new Set([...(fresh.chats||[]), ...(S.user.chats||[])])];
+    class FireDB {
+      constructor() { this.listeners = {}; }
+      
+      async get(path, fallback) {
+        if (!fbDB) return fallback;
+        try {
+          const snap = await fbDB.ref(path).once('value');
+          return snap.val() !== null && snap.val() !== undefined ? snap.val() : fallback;
+        } catch(e) { 
+          console.error("DB get error:", e); 
+          return fallback; 
         }
-        S.user.lastSeen = Date.now();
-        this.db.saveUser(S.user);
-        this.refreshTop();
       }
-      refreshTop(){
-        const c = document.getElementById("coinsNow"), b = document.getElementById("bellBadge");
-        if (c && S.user) c.textContent = Math.floor(S.user.coins).toLocaleString("ru-RU");
-        if (b && S.user){ b.textContent = S.user.unreadSystem || 0; b.style.display = S.user.unreadSystem ? "grid" : "none"; }
+      
+      async set(path, value) {
+        if (!fbDB) return value;
+        try {
+          await fbDB.ref(path).set(value);
+          return value;
+        } catch(e) { 
+          console.error("DB set error:", e); 
+          return value; 
+        }
       }
-      renderAuth(){
-        this.root.innerHTML = `<section class="shell auth">
-          <div class="brand"><div class="logo"></div><div><h1>TgXq</h1><p>Неоновая clicker/chat экосистема</p></div></div>
-          <div class="tabs">
-            <button id="tabLogin" class="chip active">Вход</button>
-            <button id="tabReg" class="chip ghost">Регистрация</button>
-          </div>
-          <div class="grid two">
-            <div id="loginCard" class="card">
-              <h3 class="title">Вход</h3>
-              <div class="grid">
-                <input id="authLoginIn" placeholder="Логин">
-                <input id="authPassIn" type="password" placeholder="Пароль">
-                <button id="goLogin" class="pri">Войти</button>
+      
+      async update(path, updates) {
+        if (!fbDB) return false;
+        try {
+          await fbDB.ref(path).update(updates);
+          return true;
+        } catch(e) { 
+          console.error("DB update error:", e); 
+          return false; 
+        }
+      }
+      
+      async push(path, value) {
+        if (!fbDB) return null;
+        try {
+          const ref = fbDB.ref(path).push();
+          await ref.set(value);
+          return ref.key;
+        } catch(e) { 
+          console.error("DB push error:", e); 
+          return null; 
+        }
+      }
+      
+      async remove(path) {
+        if (!fbDB) return false;
+        try { 
+          await fbDB.ref(path).remove(); 
+          return true; 
+        } catch(e) { 
+          console.error("DB remove error:", e); 
+          return false; 
+        }
+      }
+      
+      id(prefix) {
+        prefix = prefix || "id";
+        return prefix + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+      }
+      
+      async allUsers() {
+        if (!fbDB) return [];
+        try {
+          const snap = await fbDB.ref('users').once('value');
+          const obj = snap.val() || {};
+          return Object.values(obj).filter(Boolean);
+        } catch(e) { 
+          console.error("allUsers error:", e); 
+          return []; 
+        }
+      }
+      
+      async byLogin(login) {
+        const x = String(login || "").trim().toLowerCase();
+        const users = await this.allUsers();
+        return users.find(function(u) { return u.login && u.login.toLowerCase() === x; }) || null;
+      }
+      
+      async seed() {
+        if (!fbDB) return;
+        try {
+          const seeded = await this.get("seeded", false);
+          if (seeded) return;
+          const dev = createUser("zuhra", "755275260", "user");
+          dev.vkId = CFG.devId; dev.vk = CFG.devVk;
+          dev.prefixes = ["DEV","LEGEND"]; dev.activePrefix = "DEV";
+          dev.nickStyles = ["angel"]; dev.activeNickStyle = "angel";
+          await this.set('users/' + dev.login, dev);
+          await this.set("public_chat/messages", [{
+            id: this.id("msg"), senderId: "system", senderName: "Система",
+            text: "Добро пожаловать в TgXq!", at: Date.now(), system: true
+          }]);
+          await this.set("moderators", {});
+          await this.set("moderators_stats", {});
+          await this.set("mod_logs", []);
+          await this.set("violations", {});
+          await this.set("moderators_credentials", {});
+          await this.set("friend_requests_index", {});
+          await this.set("private_chat_index", []);
+          await this.set("seeded", true);
+          console.log('✅ Database seeded');
+        } catch(e) {
+          console.error('Seed error:', e);
+        }
+      }
+      
+      cleanup() {
+        const keys = Object.keys(this.listeners);
+        for (let i = 0; i < keys.length; i++) {
+          if (fbDB) fbDB.ref(keys[i]).off('value', this.listeners[keys[i]]);
+          delete this.listeners[keys[i]];
+        }
+      }
+    }
+
+    function createUser(login, password, role) {
+      role = role || "user";
+      const id = login === CFG.adminLogin ? "admin" : 'u_' + login.toLowerCase().replace(/[^a-zа-я0-9_]/g, "_") + '_' + Math.random().toString(36).slice(2, 7);
+      return {
+        id: id, login: login.trim(), password: password, role: role,
+        rank: role === "admin" ? "admin" : (role === "moderator" ? "ml.модер" : "user"),
+        coins: 0, xp: 0, level: 1, clickPower: 1, maxEnergy: 100, energy: 100,
+        upgrades: { clickPower: 0, energyCapacity: 0, autoClicker: 0, passiveIncome: 0 },
+        prefixes: [], activePrefix: "", nickStyles: [], activeNickStyle: "",
+        friends: {}, requests: {}, outgoingRequests: {}, chats: ["global"],
+        dailyRewards: { lastClaim: "", streak: 0 }, transactions: [],
+        warnings: [], mutedUntil: 0, mutedBy: "", bannedUntil: 0, bannedBy: "", unreadSystem: 0,
+        settings: { language: "ru", notifications: true },
+        promotedAt500k: false, lastSeen: Date.now(), lastLogin: Date.now(), createdAt: Date.now(),
+        vkId: "", vk: ""
+      };
+    }
+
+    class UI {
+      constructor(db) {
+        this.db = db;
+        this.root = document.getElementById("root");
+        this.modalLayer = document.getElementById("modalLayer");
+        this.toastLayer = document.getElementById("toastLayer");
+        console.log('✅ UI initialized');
+      }
+      
+      esc(v) {
+        if (v === null || v === undefined) return "";
+        return String(v).replace(/[&<>"']/g, function(s) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[s];
+        });
+      }
+      
+      toast(msg) {
+        const el = document.createElement("div");
+        el.className = "toast";
+        el.textContent = msg;
+        this.toastLayer.appendChild(el);
+        setTimeout(function() { el.remove(); }, 3200);
+      }
+      
+      modal(title, body, actions) {
+        actions = actions || "";
+        this.modalLayer.className = "modalLayer show";
+        this.modalLayer.innerHTML = '<div class="modal"><h2>' + this.esc(title) + '</h2>' + body + '<div class="grid two" style="margin-top:10px">' + actions + '<button class="ghost" id="closeModal">Закрыть</button></div></div>';
+        const closeBtn = document.getElementById("closeModal");
+        if (closeBtn) {
+          closeBtn.onclick = function() { this.closeModal(); }.bind(this);
+        }
+      }
+      
+      closeModal() {
+        this.modalLayer.className = "modalLayer";
+        this.modalLayer.innerHTML = "";
+      }
+      
+      roleText(u) {
+        if (u.role === "admin") return "Администратор";
+        if (u.role === "moderator") return 'Модератор ' + (u.rank || "ml.модер");
+        return "Игрок";
+      }
+      
+      nickClass(u) { return u.activeNickStyle ? u.activeNickStyle + '-name' : ""; }
+      
+      nameDisplay(uOrId) {
+        const u = typeof uOrId === "string" ? null : uOrId;
+        if (!u) return "Система";
+        const dev = u.vkId === CFG.devId;
+        let roleTag = "";
+        if (u.role === "admin") {
+          roleTag = '<span class="tag" style="background:var(--bad);color:#000">ADMIN</span> ';
+        } else if (u.role === "moderator") {
+          roleTag = '<span class="tag" style="background:var(--warn);color:#000">MOD</span> ';
+        }
+        const pref = u.activePrefix ? '<span class="tag">' + this.esc(u.activePrefix) + '</span> ' : "";
+        return roleTag + pref + '<span class="' + this.nickClass(u) + '">' + this.esc(u.login) + '</span>' + (dev ? ' <span class="tag dev">DEV</span>' : "");
+      }
+      
+      async saveUser() {
+        if (!S.user) return;
+        S.saveQueue = S.saveQueue.then(async () => {
+          S.user.lastSeen = Date.now();
+          await this.db.set('users/' + S.user.login, S.user);
+          this.refreshTop();
+        });
+      }
+      
+      refreshTop() {
+        const coinsEl = document.getElementById("coinsNow");
+        const badgeEl = document.getElementById("bellBadge");
+        if (coinsEl && S.user) coinsEl.textContent = Math.floor(S.user.coins).toLocaleString("ru-RU");
+        if (badgeEl && S.user) {
+          badgeEl.textContent = S.user.unreadSystem || 0;
+          badgeEl.style.display = S.user.unreadSystem ? "grid" : "none";
+        }
+      }
+      
+      renderAuth() {
+        console.log('🔐 Rendering auth');
+        this.root.innerHTML = `
+          <section class="shell auth">
+            <div class="brand"><div class="logo"></div><div><h1>TgXq</h1><p>Неоновая clicker/chat экосистема</p></div></div>
+            <div class="tabs">
+              <button id="tabLogin" class="chip active">Вход</button>
+              <button id="tabReg" class="chip ghost">Регистрация</button>
+            </div>
+            <div class="grid two">
+              <div id="loginCard" class="card">
+                <h3 class="title">Вход</h3>
+                <div class="grid">
+                  <input id="authLoginIn" placeholder="Логин">
+                  <input id="authPassIn" type="password" placeholder="Пароль">
+                  <button id="goLogin" class="pri">Войти</button>
+                </div>
+              </div>
+              <div id="regCard" class="card" style="display:none">
+                <h3 class="title">Регистрация</h3>
+                <div class="grid">
+                  <input id="authLoginUp" placeholder="Логин">
+                  <input id="authPassUp" type="password" placeholder="Пароль">
+                  <input id="authVkUp" placeholder="VK (необязательно)">
+                  <button id="goReg" class="ghost">Создать аккаунт</button>
+                </div>
               </div>
             </div>
-            <div id="regCard" class="card" style="display:none">
-              <h3 class="title">Регистрация</h3>
-              <div class="grid">
-                <input id="authLoginUp" placeholder="Логин">
-                <input id="authPassUp" type="password" placeholder="Пароль">
-                <input id="authVkUp" placeholder="VK (необязательно)">
-                <button id="goReg" class="ghost">Создать аккаунт</button>
-              </div>
-            </div>
-          </div>
-          <div class="meta">Админ-данные не отображаются в интерфейсе. Разработчик: <a href="${CFG.devVk}" target="_blank" style="color:var(--c1)">id755275260</a>.</div>
-        </section>`;
+            <div class="meta">Разработчик: <a href="${CFG.devVk}" target="_blank" style="color:var(--c1)">id755275260</a></div>
+          </section>`;
       }
-      renderApp(){
-        const isAdmin = S.user.role === "admin", isMod = S.user.role === "moderator";
-        this.root.innerHTML = `<section class="shell app">
-          <header class="top">
-            <div class="identity"><div class="avatar">${this.esc((S.user.login||"T")[0]).toUpperCase()}</div><div><strong>${this.nameBy(S.user)}</strong><div class="meta">${this.roleText(S.user)} · TgXq</div></div></div>
-            <div class="coins">💰 <span id="coinsNow">${Math.floor(S.user.coins).toLocaleString("ru-RU")}</span></div>
-            <button id="bellBtn" class="iconbtn ghost">🔔<span id="bellBadge" class="badge" style="${S.user.unreadSystem ? "" : "display:none"}">${S.user.unreadSystem || 0}</span></button>
-          </header>
-          <main id="screenHost" class="screen"></main>
-          <nav class="nav">
-            <button data-s="clicker"><b>✨</b><span>Кликер</span></button>
-            <button data-s="shop"><b>🛍️</b><span>Шоп</span></button>
-            <button data-s="chat"><b>💬</b><span>Чаты</span></button>
-            <button data-s="friends"><b>👥</b><span>Друзья</span></button>
-            <button data-s="profile"><b>👤</b><span>Профиль</span></button>
-            <button data-s="settings"><b>⚙️</b><span>Настройки</span></button>
-            ${(isAdmin || isMod) ? `<button data-s="${isAdmin ? "admin":"moderator"}"><b>🛡️</b><span>${isAdmin ? "Админ":"Мод"}</span></button>` : `<button style="visibility:hidden"><b>•</b><span>•</span></button>`}
-          </nav>
-        </section>`;
-        document.querySelectorAll("[data-s]").forEach(b => b.onclick = () => this.renderScreen(b.dataset.s));
-        document.getElementById("bellBtn").onclick = () => app.chat.openSystem();
+      
+      renderApp() {
+        console.log('🎮 Rendering app, user:', S.user);
+        if (!S.user) {
+          console.error('❌ No user in renderApp');
+          return;
+        }
+        const isAdmin = S.user.role === "admin";
+        const isMod = S.user.role === "moderator";
+        console.log('🔍 isAdmin:', isAdmin, 'isMod:', isMod);
+        
+        let adminButtonHtml = '<button style="visibility:hidden"><b>•</b><span>•</span></button>';
+        if (isAdmin || isMod) {
+          const buttonType = isAdmin ? "admin" : "moderator";
+          const buttonText = isAdmin ? "Админ" : "Мод";
+          adminButtonHtml = '<button data-s="' + buttonType + '"><b>🛡️</b><span>' + buttonText + '</span></button>';
+          console.log('✅ Admin button added:', buttonType);
+        }
+        
+        this.root.innerHTML = `
+          <section class="shell app">
+            <header class="top">
+              <div class="identity"><div class="avatar">${this.esc((S.user.login || "T")[0]).toUpperCase()}</div>
+                <div><strong>${this.nameDisplay(S.user)}</strong><div class="meta">${this.roleText(S.user)} · TgXq</div></div>
+              </div>
+              <div class="coins">💰 <span id="coinsNow">${Math.floor(S.user.coins).toLocaleString("ru-RU")}</span></div>
+              <button id="bellBtn" class="iconbtn ghost">🔔<span id="bellBadge" class="badge" style="${S.user.unreadSystem ? "" : "display:none"}">${S.user.unreadSystem || 0}</span></button>
+            </header>
+            <main id="screenHost" class="screen"></main>
+            <nav class="nav">
+              <button data-s="clicker"><b>✨</b><span>Кликер</span></button>
+              <button data-s="shop"><b>🛍️</b><span>Шоп</span></button>
+              <button data-s="chat"><b>💬</b><span>Чаты</span></button>
+              <button data-s="friends"><b>👥</b><span>Друзья</span></button>
+              <button data-s="profile"><b>👤</b><span>Профиль</span></button>
+              <button data-s="settings"><b>⚙️</b><span>Настройки</span></button>
+              ${adminButtonHtml}
+            </nav>
+          </section>`;
+        
+        const navButtons = document.querySelectorAll("[data-s]");
+        const self = this;
+        console.log('🔧 Found nav buttons:', navButtons.length);
+        for (let i = 0; i < navButtons.length; i++) {
+          (function(btn) {
+            btn.onclick = function() { 
+              const screen = btn.dataset.s;
+              console.log('📱 Nav button clicked:', screen);
+              self.renderScreen(screen); 
+            };
+          })(navButtons[i]);
+        }
+        
+        const bellBtn = document.getElementById("bellBtn");
+        if (bellBtn) {
+          bellBtn.onclick = function() { 
+            if (app && app.chat) app.chat.openSystem(); 
+          };
+        }
+        
         this.renderScreen(S.screen);
       }
-      renderScreen(sc){
-        if (sc === "admin" && S.user.role !== "admin") sc = "clicker";
-        if (sc === "moderator" && S.user.role !== "moderator" && S.user.role !== "admin") sc = "clicker";
+      
+      renderScreen(sc) {
+        console.log('🖼️ renderScreen called with:', sc);
+        if (!S.user) {
+          console.error('❌ No user in renderScreen');
+          return;
+        }
+        if (sc === "admin" && S.user.role !== "admin") {
+          console.log('⚠️ Non-admin trying to access admin panel');
+          sc = "clicker";
+        }
+        if (sc === "moderator" && S.user.role !== "moderator" && S.user.role !== "admin") {
+          console.log('⚠️ Non-mod trying to access moderator panel');
+          sc = "clicker";
+        }
         S.screen = sc;
-        document.querySelectorAll(".nav button").forEach(b => b.classList.toggle("active", b.dataset.s === sc));
-        const host = document.getElementById("screenHost"); if (!host) return;
-        if (sc === "clicker") return app.clicker.render(host);
-        if (sc === "shop") return app.shop.render(host);
-        if (sc === "chat") return app.chat.render(host);
-        if (sc === "friends") return app.friends.render(host);
-        if (sc === "profile") return app.profile.render(host);
-        if (sc === "settings") return app.settings.render(host);
-        if (sc === "admin") return app.admin.render(host);
-        if (sc === "moderator") return app.moder.render(host);
+        
+        const navButtons = document.querySelectorAll(".nav button");
+        for (let i = 0; i < navButtons.length; i++) {
+          navButtons[i].classList.toggle("active", navButtons[i].dataset.s === sc);
+        }
+        
+        const host = document.getElementById("screenHost");
+        if (!host) {
+          console.error('❌ screenHost not found');
+          return;
+        }
+        
+        try {
+          if (!app) {
+            console.error('❌ app not initialized');
+            return;
+          }
+          console.log(' Rendering screen:', sc);
+          if (sc === "clicker") app.clicker.render(host);
+          else if (sc === "shop") app.shop.render(host);
+          else if (sc === "chat") app.chat.render(host);
+          else if (sc === "friends") app.friends.render(host);
+          else if (sc === "profile") app.profile.render(host);
+          else if (sc === "settings") app.settings.render(host);
+          else if (sc === "admin") {
+            console.log('🔧 Rendering ADMIN panel');
+            if (app.admin) {
+              app.admin.render(host);
+              console.log('✅ Admin panel rendered');
+            } else {
+              console.error('❌ app.admin is not defined');
+              host.innerHTML = '<div class="error-msg">Ошибка: админ панель не инициализирована</div>';
+            }
+          }
+          else if (sc === "moderator") app.moder.render(host);
+        } catch(e) {
+          console.error("Render error:", e);
+          host.innerHTML = '<div class="error-msg">Ошибка: ' + this.esc(e.message) + '</div>';
+        }
       }
     }
 
     class Auth {
-      constructor(db,ui){ this.db=db; this.ui=ui; }
-      init(){
-        const ses = this.db.g("session", null);
-        if (ses){ const u = this.db.g(`users/${ses.userId}`, null); if (u) return this.loginUser(u, true); }
-        this.ui.renderAuth();
-        document.getElementById("tabLogin").onclick = () => {
-          document.getElementById("loginCard").style.display = "block";
-          document.getElementById("regCard").style.display = "none";
-          document.getElementById("tabLogin").className = "chip active";
-          document.getElementById("tabReg").className = "chip ghost";
-        };
-        document.getElementById("tabReg").onclick = () => {
-          document.getElementById("loginCard").style.display = "none";
-          document.getElementById("regCard").style.display = "block";
-          document.getElementById("tabLogin").className = "chip ghost";
-          document.getElementById("tabReg").className = "chip active";
-        };
-        document.getElementById("goLogin").onclick = () => this.login();
-        document.getElementById("goReg").onclick = () => this.register();
+      constructor(db, ui) { 
+        this.db = db; 
+        this.ui = ui; 
+        console.log('🔑 Auth initialized');
       }
-      login(){
-        const login = document.getElementById("authLoginIn").value.trim();
-        const pass = document.getElementById("authPassIn").value;
-        if (!login || !pass) return this.ui.toast("Введите логин и пароль");
-        if (login === CFG.adminLogin && pass === CFG.adminPassword){
-          let a = this.db.g("users/admin", null);
-          if (!a){ a = userFactory(CFG.adminLogin, CFG.adminPassword, "admin"); a.coins = 999999999; this.db.saveUser(a); }
-          return this.loginUser(a);
+      
+      async init() {
+        console.log('🔍 Checking session...');
+        try {
+          const session = await this.db.get("session", null);
+          console.log('Session:', session);
+          if (session && session.userId) {
+            const user = await this.db.get('users/' + session.userId, null);
+            console.log('User:', user);
+            if (user) return this.loginUser(user, true);
+          }
+        } catch(e) {
+          console.error('Session check error:', e);
         }
-        const modCreds = this.db.g("moderators_credentials", {});
-        const m = Object.values(modCreds).find(x => x.login === login && x.password === pass && x.active !== false);
-        if (m){
-          const mu = this.db.g(`users/${m.userId}`, null);
+        this.ui.renderAuth();
+        this.bindAuthEvents();
+      }
+      
+      bindAuthEvents() {
+        const self = this;
+        const tabLogin = document.getElementById("tabLogin");
+        const tabReg = document.getElementById("tabReg");
+        const goLogin = document.getElementById("goLogin");
+        const goReg = document.getElementById("goReg");
+        
+        if (tabLogin) tabLogin.onclick = function() { self.toggleAuth("login"); };
+        if (tabReg) tabReg.onclick = function() { self.toggleAuth("reg"); };
+        if (goLogin) goLogin.onclick = function() { self.login(); };
+        if (goReg) goReg.onclick = function() { self.register(); };
+        console.log('✅ Auth events bound');
+      }
+      
+      toggleAuth(mode) {
+        const loginCard = document.getElementById("loginCard");
+        const regCard = document.getElementById("regCard");
+        const tabLogin = document.getElementById("tabLogin");
+        const tabReg = document.getElementById("tabReg");
+        
+        if (loginCard) loginCard.style.display = mode === "login" ? "block" : "none";
+        if (regCard) regCard.style.display = mode === "reg" ? "block" : "none";
+        if (tabLogin) tabLogin.className = mode === "login" ? "chip active" : "chip ghost";
+        if (tabReg) tabReg.className = mode === "reg" ? "chip active" : "chip ghost";
+      }
+      
+      async login() {
+        const loginInput = document.getElementById("authLoginIn");
+        const passInput = document.getElementById("authPassIn");
+        
+        const login = loginInput ? loginInput.value.trim() : "";
+        const pass = passInput ? passInput.value : "";
+        
+        if (!login || !pass) return this.ui.toast("Введите логин и пароль");
+        
+        console.log('🔐 Login attempt:', login);
+        
+        if (login === CFG.adminLogin && pass === CFG.adminPassword) {
+          let admin = await this.db.get('users/' + login, null);
+          if (!admin) {
+            admin = createUser(CFG.adminLogin, CFG.adminPassword, "admin");
+            admin.coins = 999999999;
+            await this.db.set('users/' + login, admin);
+          }
+          return this.loginUser(admin);
+        }
+        
+        const modCreds = await this.db.get("moderators_credentials", {});
+        const modEntry = Object.values(modCreds || {}).find(function(m) { 
+          return m.login === login && m.password === pass && m.active !== false; 
+        });
+        
+        if (modEntry) {
+          const mu = await this.db.get('users/' + modEntry.userId, null);
           if (!mu) return this.ui.toast("Модераторский профиль не найден");
-          mu.role = "moderator"; mu.rank = m.rank || "ml.модер"; this.db.saveUser(mu);
+          mu.role = "moderator"; 
+          mu.rank = modEntry.rank || "ml.модер";
+          await this.db.set('users/' + mu.login, mu);
           return this.loginUser(mu);
         }
-        const u = this.db.byLogin(login);
-        if (!u || u.password !== pass) return this.ui.toast("Неверный логин/пароль");
-        if (u.bannedUntil && u.bannedUntil > Date.now()) return this.ui.toast("Вы забанены");
-        this.loginUser(u);
+        
+        const user = await this.db.byLogin(login);
+        if (!user || user.password !== pass) return this.ui.toast("Неверный логин/пароль");
+        
+        // Проверка бана перед входом
+        if (user.bannedUntil && user.bannedUntil > Date.now()) {
+          const by = user.bannedBy || "Администрация";
+          const until = new Date(user.bannedUntil).toLocaleString("ru-RU");
+          return this.ui.toast(`Вы заблокированы модератором ${by} до ${until}`);
+        }
+        
+        // Если бан истек, очищаем его
+        if (user.bannedUntil && user.bannedUntil <= Date.now()) {
+          user.bannedUntil = 0;
+          user.bannedBy = "";
+          await this.db.set('users/' + login, user);
+        }
+        
+        this.loginUser(user);
       }
-      register(){
-        const login = document.getElementById("authLoginUp").value.trim();
-        const pass = document.getElementById("authPassUp").value;
-        const vk = document.getElementById("authVkUp").value.trim();
+      
+      async register() {
+        const loginInput = document.getElementById("authLoginUp");
+        const passInput = document.getElementById("authPassUp");
+        const vkInput = document.getElementById("authVkUp");
+        
+        const login = loginInput ? loginInput.value.trim() : "";
+        const pass = passInput ? passInput.value : "";
+        const vk = vkInput ? vkInput.value.trim() : "";
+        
         if (!login || !pass) return this.ui.toast("Введите логин и пароль");
-        if (this.db.byLogin(login)) return this.ui.toast("Логин уже занят");
-        const u = userFactory(login, pass, "user");
-        u.vk = vk.startsWith("http") ? vk : ""; u.vkId = (vk.match(/\d+/) || [""])[0];
-        this.db.saveUser(u);
-        this.loginUser(u);
+        if (await this.db.byLogin(login)) return this.ui.toast("Логин уже занят");
+        
+        const user = createUser(login, pass, "user");
+        user.vk = vk.startsWith("http") ? vk : "";
+        user.vkId = (vk.match(/\d+/) || [""])[0];
+        await this.db.set('users/' + login, user);
+        this.loginUser(user);
       }
-      loginUser(u, restored=false){
-        const now = Date.now(), away = Math.max(0, now - (u.lastLogin || now));
-        S.user = u; u.lastLogin = now;
-        this.db.s("session", { userId: u.id, at: now });
-        app.econ.applyOffline(away);
-        this.ui.saveMe();
+      
+      async loginUser(user, restored) {
+        console.log('👤 Login user:', user.login);
+        const now = Date.now();
+        S.user = JSON.parse(JSON.stringify(user));
+        S.user.lastLogin = now;
+        await this.db.set("session", { userId: S.user.login, at: now });
+        await this.ui.saveUser();
         this.ui.renderApp();
         if (!restored) this.ui.toast("Вход выполнен");
+        this.setupUserSync();
       }
-      logout(){ this.db.rm("session"); S.user = null; location.reload(); }
+      
+      setupUserSync() {
+        if (!S.user) return;
+        const path = 'users/' + S.user.login;
+        
+        if (S.fbListeners[path]) {
+          if (fbDB) fbDB.ref(path).off('value', S.fbListeners[path]);
+          delete S.fbListeners[path];
+        }
+        
+        const self = this;
+        const listener = function(snap) {
+          const fresh = snap.val();
+          if (!fresh || !S.user) return;
+          
+          const safeFields = ['bannedUntil', 'bannedBy', 'mutedUntil', 'mutedBy', 'warnings', 'role', 'rank', 'prefixes', 'nickStyles', 'friends', 'requests', 'chats'];
+          for (let i = 0; i < safeFields.length; i++) {
+            const field = safeFields[i];
+            if (fresh[field] !== undefined) S.user[field] = fresh[field];
+          }
+          
+          if (fresh.coins !== undefined && Math.abs(fresh.coins - S.user.coins) > 0.01) {
+            S.user.coins = fresh.coins;
+          }
+          if (fresh.energy !== undefined && Math.abs(fresh.energy - S.user.energy) > 0.01) {
+            S.user.energy = fresh.energy;
+          }
+          
+          self.ui.refreshTop();
+          if (["chat", "friends", "profile"].indexOf(S.screen) !== -1) {
+            self.ui.renderScreen(S.screen);
+          }
+        };
+        
+        if (fbDB) {
+          fbDB.ref(path).on('value', listener);
+          S.fbListeners[path] = listener;
+          console.log('✅ User sync setup');
+        }
+      }
+      
+      async logout() {
+        await this.db.remove("session");
+        const keys = Object.keys(S.fbListeners);
+        for (let i = 0; i < keys.length; i++) {
+          const fn = S.fbListeners[keys[i]];
+          if (typeof fn === 'function' && S.user && S.user.login && fbDB) {
+            fbDB.ref('users/' + S.user.login).off('value', fn);
+          }
+        }
+        S.fbListeners = {};
+        S.user = null;
+        location.reload();
+      }
     }
 
     class Economy {
-      constructor(db,ui){ this.db=db; this.ui=ui; }
-      mult(){ let b = 1; (S.user.prefixes||[]).forEach(id => { const p = DATA.prefixes.find(x => x.id === id); if (p) b += p.income; }); return b; }
-      clickVal(){ const cm = 1 + (Math.min(5,S.combo)-1)*.25; return Math.max(1, (S.user.clickPower + (S.user.upgrades.clickPower||0)) * cm * this.mult()); }
-      add(amount, reason="income"){
-        S.user.coins = Math.max(0, Number(S.user.coins||0) + amount);
-        S.user.transactions.push({ id: this.db.id("tx"), amount, reason, at: Date.now() });
-        if (amount > 0) this.addXp(amount);
-        this.auto500k();
-        this.ui.saveMe();
+      constructor(db, ui) { this.db = db; this.ui = ui; }
+      
+      mult() {
+        let b = 1;
+        const prefixes = S.user.prefixes || [];
+        for (let i = 0; i < prefixes.length; i++) {
+          const p = DATA.prefixes.find(function(x) { return x.id === prefixes[i]; });
+          if (p) b += p.income;
+        }
+        return b;
       }
-      spend(a){ if (S.user.coins < a){ this.ui.toast("Недостаточно монет"); return false; } this.add(-a,"spend"); return true; }
-      addXp(x){
-        S.user.xp += Math.max(0,x);
-        while (S.user.xp >= 500 * S.user.level){
-          S.user.xp -= 500 * S.user.level; S.user.level++; S.user.clickPower += 2; S.user.maxEnergy += 10; S.user.energy = S.user.maxEnergy;
+      
+      clickVal() {
+        const cm = 1 + (Math.min(5, S.combo) - 1) * 0.25;
+        return Math.max(1, (S.user.clickPower + (S.user.upgrades.clickPower || 0)) * cm * this.mult());
+      }
+      
+      async add(amount, reason) {
+        reason = reason || "income";
+        S.user.coins = Math.max(0, Number(S.user.coins || 0) + amount);
+        S.user.transactions.push({ id: this.db.id("tx"), amount: amount, reason: reason, at: Date.now() });
+        if (amount > 0) this.addXp(amount);
+        await this.auto500k();
+        await this.ui.saveUser();
+      }
+      
+      async spend(a) {
+        if (S.user.coins < a) { this.ui.toast("Недостаточно монет"); return false; }
+        await this.add(-a, "spend");
+        return true;
+      }
+      
+      addXp(x) {
+        S.user.xp += Math.max(0, x);
+        while (S.user.xp >= 500 * S.user.level) {
+          S.user.xp -= 500 * S.user.level;
+          S.user.level++;
+          S.user.clickPower += 2;
+          S.user.maxEnergy += 10;
+          S.user.energy = S.user.maxEnergy;
           this.ui.toast("Новый уровень: " + S.user.level);
         }
       }
-      regen(){ if (!S.user) return; S.user.energy = Math.min(S.user.maxEnergy, (S.user.energy||0)+0.5); if (S.screen === "clicker") app.clicker.refresh(); }
-      passive(){
+      
+      regen() {
         if (!S.user) return;
-        const p = (S.user.upgrades.passiveIncome||0) * 0.5;
-        const a = (S.user.upgrades.autoClicker||0) * 0.3 / 20;
-        const inc = (p+a) * this.mult();
-        if (inc > 0) this.add(inc, "passive");
+        S.user.energy = Math.min(S.user.maxEnergy, (S.user.energy || 0) + 0.5);
+        if (S.screen === "clicker") app.clicker.refresh();
       }
-      applyOffline(ms){
+      
+      async passive() {
         if (!S.user) return;
-        const sec = Math.floor(ms/1000);
-        const p = (S.user.upgrades.passiveIncome||0) * 0.5;
-        const a = (S.user.upgrades.autoClicker||0) * 0.3 / 20;
-        const earn = Math.min(5000, Math.floor(sec * (p+a) * this.mult()));
-        if (earn > 0){ S.user.coins += earn; setTimeout(()=>this.ui.toast(`Оффлайн доход: +${earn}`), 300); }
+        const p = (S.user.upgrades.passiveIncome || 0) * 0.5;
+        const a = (S.user.upgrades.autoClicker || 0) * 0.3 / 20;
+        const inc = (p + a) * this.mult();
+        if (inc > 0) await this.add(inc, "passive");
       }
-      daily(){
-        const t = new Date().toISOString().slice(0,10);
-        if (S.user.dailyRewards.lastClaim === t) return this.ui.toast("Сегодня уже забрано");
-        const y = new Date(Date.now() - 86400000).toISOString().slice(0,10);
-        S.user.dailyRewards.streak = S.user.dailyRewards.lastClaim === y ? S.user.dailyRewards.streak + 1 : 1;
-        S.user.dailyRewards.lastClaim = t;
-        const b = 50 * S.user.dailyRewards.streak;
-        this.add(b,"daily");
-        this.ui.toast(`Ежедневная награда: +${b}`);
+      
+      async daily() {
+        const today = new Date().toISOString().slice(0, 10);
+        if (S.user.dailyRewards.lastClaim === today) return this.ui.toast("Сегодня уже забрано");
+        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        S.user.dailyRewards.streak = S.user.dailyRewards.lastClaim === yesterday ? S.user.dailyRewards.streak + 1 : 1;
+        S.user.dailyRewards.lastClaim = today;
+        const bonus = 50 * S.user.dailyRewards.streak;
+        await this.add(bonus, "daily");
+        this.ui.toast('Ежедневная награда: +' + bonus);
       }
-      mystery(){
-        if (!this.spend(1000)) return;
-        const pool = [200,500,1000,2000,5000,-300];
-        const r = pool[Math.floor(Math.random()*pool.length)];
-        this.add(r,"mystery");
-        this.ui.toast(r >= 0 ? `Mystery Box: +${r}` : `Mystery Box: ${r}`);
+      
+      async mystery() {
+        if (!await this.spend(1000)) return;
+        const pool = [200, 500, 1000, 2000, 5000, -300];
+        const r = pool[Math.floor(Math.random() * pool.length)];
+        await this.add(r, "mystery");
+        this.ui.toast(r >= 0 ? 'Mystery Box: +' + r : 'Mystery Box: ' + r);
       }
-      auto500k(){
+      
+      async auto500k() {
         if (S.user.role !== "user" || S.user.promotedAt500k || S.user.coins < 500000) return;
         S.user.promotedAt500k = true;
-        app.moder.grant(S.user.id, "auto_500k");
+        await app.moder.grant(S.user.login, "auto_500k");
       }
     }
 
     class Clicker {
-      constructor(db,ui){ this.db=db; this.ui=ui; }
-      render(el){
-        el.innerHTML = `<div class="grid">
-          <div class="grid two">
-            <div class="card"><h3 class="title">Энергия</h3><div class="bar"><span id="eBar"></span></div><div id="eTxt" class="meta"></div></div>
-            <div class="card"><h3 class="title">Комбо</h3><div><b id="comboTxt">x1.0</b></div><div class="meta">Окно 700мс, максимум x2</div></div>
-          </div>
-          <div class="card"><h3 class="title">Награда за 500 000</h3><div class="meta">При достижении 500 000 монет автоматически выдается модерка, а логин/пароль приходят в системные уведомления.</div></div>
-          <div id="zone" class="sphereZone"><button id="sphere" class="sphere" title="Клик"></button></div>
-          <div class="grid two"><button id="dailyBtn" class="pri">Ежедневная награда</button><button id="mystBtn" class="ghost">Mystery Box · 1000</button></div>
-        </div>`;
-        document.getElementById("sphere").onclick = e => this.click(e);
-        document.getElementById("dailyBtn").onclick = () => app.econ.daily();
-        document.getElementById("mystBtn").onclick = () => app.econ.mystery();
+      constructor(db, ui) { this.db = db; this.ui = ui; }
+      
+      render(el) {
+        el.innerHTML = `
+          <div class="grid">
+            <div class="grid two">
+              <div class="card"><h3 class="title">Энергия</h3><div class="bar"><span id="eBar"></span></div><div id="eTxt" class="meta"></div></div>
+              <div class="card"><h3 class="title">Комбо</h3><div><b id="comboTxt">x1.0</b></div><div class="meta">Окно 700мс, максимум x2</div></div>
+            </div>
+            <div class="card"><h3 class="title">Награда за 500 000</h3><div class="meta">При достижении 500 000 монет автоматически выдается модерка.</div></div>
+            <div id="zone" class="sphereZone"><button id="sphere" class="sphere" title="Клик"></button></div>
+            <div class="grid two"><button id="dailyBtn" class="pri">Ежедневная награда</button><button id="mystBtn" class="ghost">Mystery Box · 1000</button></div>
+          </div>`;
+        
+        const sphere = document.getElementById("sphere");
+        if (sphere) sphere.onclick = function(e) { this.click(e); }.bind(this);
+        
+        const dailyBtn = document.getElementById("dailyBtn");
+        if (dailyBtn) dailyBtn.onclick = function() { app.econ.daily(); };
+        
+        const mystBtn = document.getElementById("mystBtn");
+        if (mystBtn) mystBtn.onclick = function() { app.econ.mystery(); };
+        
         this.refresh();
       }
-      refresh(){
-        const b = document.getElementById("eBar"), t = document.getElementById("eTxt"), c = document.getElementById("comboTxt");
-        if (b) b.style.width = `${Math.max(0,Math.min(100,S.user.energy / S.user.maxEnergy * 100))}%`;
-        if (t) t.textContent = `${Math.floor(S.user.energy)} / ${S.user.maxEnergy}`;
-        if (c) c.textContent = "x" + (1 + (Math.min(5,S.combo)-1)*0.25).toFixed(1);
+      
+      refresh() {
+        const b = document.getElementById("eBar");
+        const t = document.getElementById("eTxt");
+        const c = document.getElementById("comboTxt");
+        
+        if (b) b.style.width = Math.max(0, Math.min(100, S.user.energy / S.user.maxEnergy * 100)) + '%';
+        if (t) t.textContent = Math.floor(S.user.energy) + ' / ' + S.user.maxEnergy;
+        if (c) c.textContent = 'x' + (1 + (Math.min(5, S.combo) - 1) * 0.25).toFixed(1);
       }
-      click(e){
+      
+      async click(e) {
         const n = Date.now();
         if (n < S.blockedTo) return this.ui.toast("Античит: временный блок");
-        S.cps = S.cps.filter(t => n - t < 1000); S.cps.push(n);
-        if (S.cps.length > 20){ S.blockedTo = n + 2500; S.user.energy = 0; this.ui.saveMe(); this.refresh(); return this.ui.toast("Античит: слишком высокий CPS"); }
+        S.cps = S.cps.filter(function(t) { return n - t < 1000; });
+        S.cps.push(n);
+        
+        if (S.cps.length > 20) {
+          S.blockedTo = n + 2500; 
+          S.user.energy = 0;
+          await this.ui.saveUser(); 
+          this.refresh();
+          return this.ui.toast("Античит: слишком высокий CPS");
+        }
+        
         if (S.user.energy < 1) return this.ui.toast("Энергия закончилась");
-        S.combo = n - S.lastClick <= 700 ? Math.min(5, S.combo + 1) : 1; S.lastClick = n;
+        S.combo = n - S.lastClick <= 700 ? Math.min(5, S.combo + 1) : 1;
+        S.lastClick = n; 
         S.user.energy -= 1;
+        
         let val = app.econ.clickVal();
-        if (Math.random() < 0.001){ const j = Math.floor(S.user.coins * 0.3); val += j; this.ui.toast(`Джекпот +${j}`); }
-        app.econ.add(val, "click");
-        this.float(e, "+" + Math.floor(val)); this.parts(e);
+        if (Math.random() < 0.001) {
+          const j = Math.floor(S.user.coins * 0.3); 
+          val += j; 
+          this.ui.toast('Джекпот +' + j);
+        }
+        
+        await app.econ.add(val, "click");
+        this.float(e, "+" + Math.floor(val)); 
+        this.parts(e);
         if (navigator.vibrate) navigator.vibrate(10);
         this.refresh();
       }
-      float(e, txt){
-        const z = document.getElementById("zone"), r = z.getBoundingClientRect();
-        const f = document.createElement("div"); f.className = "float"; f.textContent = txt; f.style.left = (e.clientX-r.left)+"px"; f.style.top = (e.clientY-r.top)+"px";
-        z.appendChild(f); setTimeout(()=>f.remove(),800);
+      
+      float(e, txt) {
+        const z = document.getElementById("zone");
+        const r = z.getBoundingClientRect();
+        const f = document.createElement("div"); 
+        f.className = "float"; 
+        f.textContent = txt;
+        f.style.left = (e.clientX - r.left) + "px"; 
+        f.style.top = (e.clientY - r.top) + "px";
+        z.appendChild(f); 
+        setTimeout(function() { f.remove(); }, 800);
       }
-      parts(e){
-        const z = document.getElementById("zone"), r = z.getBoundingClientRect();
-        for (let i=0;i<40;i++){
-          const p = document.createElement("i"); p.className = "p"; const a = Math.random() * Math.PI * 2, d = 30 + Math.random() * 100;
-          p.style.left = (e.clientX-r.left)+"px"; p.style.top = (e.clientY-r.top)+"px";
-          p.style.color = i%3===0 ? "var(--c2)" : i%3===1 ? "var(--c1)" : "var(--c3)";
-          p.style.setProperty("--dx", `${Math.cos(a)*d}px`); p.style.setProperty("--dy", `${Math.sin(a)*d}px`);
-          z.appendChild(p); setTimeout(()=>p.remove(),760);
+      
+      parts(e) {
+        const z = document.getElementById("zone");
+        const r = z.getBoundingClientRect();
+        for (let i = 0; i < 40; i++) {
+          const p = document.createElement("i"); 
+          p.className = "p";
+          const a = Math.random() * Math.PI * 2;
+          const d = 30 + Math.random() * 100;
+          p.style.left = (e.clientX - r.left) + "px"; 
+          p.style.top = (e.clientY - r.top) + "px";
+          p.style.color = i % 3 === 0 ? "var(--c2)" : (i % 3 === 1 ? "var(--c1)" : "var(--c3)");
+          p.style.setProperty("--dx", Math.cos(a) * d + "px");
+          p.style.setProperty("--dy", Math.sin(a) * d + "px");
+          z.appendChild(p); 
+          setTimeout(function() { p.remove(); }, 760);
         }
       }
     }
 
     class Shop {
-      constructor(db,ui){ this.db=db; this.ui=ui; }
-      cost(k){ const u = DATA.upgrades[k], l = S.user.upgrades[k]||0; return Math.floor(u.base * Math.pow(u.mul, l)); }
-      render(el){
-        el.innerHTML = `<div class="tabs">
-          <button class="chip ${S.shopTab==='upgrades'?'active':'ghost'}" data-t="upgrades">Улучшения</button>
-          <button class="chip ${S.shopTab==='prefixes'?'active':'ghost'}" data-t="prefixes">Префиксы</button>
-          <button class="chip ${S.shopTab==='nicks'?'active':'ghost'}" data-t="nicks">Ники</button>
-          <button class="chip ${S.shopTab==='cases'?'active':'ghost'}" data-t="cases">Кейсы</button>
-        </div><div id="shopBody" class="grid"></div>`;
-        el.querySelectorAll("[data-t]").forEach(b => b.onclick = () => { S.shopTab = b.dataset.t; this.render(el); });
-        const b = document.getElementById("shopBody");
-        if (S.shopTab === "upgrades") this.upgrades(b);
-        if (S.shopTab === "prefixes") this.prefixes(b);
-        if (S.shopTab === "nicks") this.nicks(b);
-        if (S.shopTab === "cases") this.cases(b);
+      constructor(db, ui) { this.db = db; this.ui = ui; }
+      
+      cost(k) {
+        const u = DATA.upgrades[k];
+        const l = S.user.upgrades[k] || 0;
+        return Math.floor(u.base * Math.pow(u.mul, l));
       }
-      upgrades(el){
-        el.innerHTML = Object.entries(DATA.upgrades).map(([k,v]) => `<div class="card listRow"><div><b>${v.name}</b><div class="meta">Уровень ${S.user.upgrades[k]||0}. ${v.desc}</div></div><button class="pri" data-u="${k}">${this.cost(k)} 💰</button></div>`).join("");
-        el.querySelectorAll("[data-u]").forEach(b => b.onclick = () => {
-          const k = b.dataset.u, c = this.cost(k); if (!app.econ.spend(c)) return;
-          S.user.upgrades[k] = (S.user.upgrades[k]||0) + 1;
-          if (k === "clickPower") S.user.clickPower += 1;
-          if (k === "energyCapacity"){ S.user.maxEnergy += 20; S.user.energy = S.user.maxEnergy; }
-          this.ui.saveMe(); this.ui.toast("Улучшение куплено"); this.render(document.getElementById("screenHost"));
-        });
+      
+      render(el) {
+        el.innerHTML = `
+          <div class="tabs">
+            <button class="chip ${S.shopTab === 'upgrades' ? 'active' : 'ghost'}" data-t="upgrades">Улучшения</button>
+            <button class="chip ${S.shopTab === 'prefixes' ? 'active' : 'ghost'}" data-t="prefixes">Префиксы</button>
+            <button class="chip ${S.shopTab === 'nicks' ? 'active' : 'ghost'}" data-t="nicks">Ники</button>
+            <button class="chip ${S.shopTab === 'cases' ? 'active' : 'ghost'}" data-t="cases">Кейсы</button>
+          </div><div id="shopBody" class="grid"></div>`;
+        
+        const tabs = el.querySelectorAll("[data-t]");
+        const self = this;
+        for (let i = 0; i < tabs.length; i++) {
+          (function(btn) {
+            btn.onclick = function() { 
+              S.shopTab = btn.dataset.t; 
+              self.render(el); 
+            };
+          })(tabs[i]);
+        }
+        
+        const body = document.getElementById("shopBody");
+        if (S.shopTab === "upgrades") this.upgrades(body);
+        else if (S.shopTab === "prefixes") this.prefixes(body);
+        else if (S.shopTab === "nicks") this.nicks(body);
+        else if (S.shopTab === "cases") this.cases(body);
       }
-      prefixes(el){
-        el.innerHTML = DATA.prefixes.map(p => {
+      
+      async upgrades(el) {
+        const entries = Object.entries(DATA.upgrades);
+        let html = '';
+        for (let i = 0; i < entries.length; i++) {
+          const k = entries[i][0];
+          const v = entries[i][1];
+          html += '<div class="card listRow"><div><b>' + v.name + '</b><div class="meta">Уровень ' + (S.user.upgrades[k] || 0) + '. ' + v.desc + '</div></div><button class="pri" data-u="' + k + '">' + this.cost(k) + ' 💰</button></div>';
+        }
+        el.innerHTML = html;
+        
+        const buttons = el.querySelectorAll("[data-u]");
+        const self = this;
+        for (let i = 0; i < buttons.length; i++) {
+          (function(btn) {
+            btn.onclick = async function() {
+              const k = btn.dataset.u;
+              const c = self.cost(k);
+              if (!await app.econ.spend(c)) return;
+              S.user.upgrades[k] = (S.user.upgrades[k] || 0) + 1;
+              if (k === "clickPower") S.user.clickPower += 1;
+              if (k === "energyCapacity") { S.user.maxEnergy += 20; S.user.energy = S.user.maxEnergy; }
+              await self.ui.saveUser(); 
+              self.ui.toast("Улучшение куплено"); 
+              self.render(document.getElementById("screenHost"));
+            };
+          })(buttons[i]);
+        }
+      }
+      
+      async prefixes(el) {
+        let html = '';
+        for (let i = 0; i < DATA.prefixes.length; i++) {
+          const p = DATA.prefixes[i];
           const own = Array.isArray(S.user.prefixes) && S.user.prefixes.indexOf(p.id) !== -1;
-          return `<div class="card listRow"><div><b><span class="tag">${p.id}</span></b><div class="meta">Бонус +${Math.round(p.income*100)}% к доходу</div></div><button class="${own?'ghost':'pri'}" data-p="${p.id}">${own?'Активировать':`${p.price} 💰`}</button></div>`;
-        }).join("");
-        el.querySelectorAll("[data-p]").forEach(b => b.onclick = () => {
-          const id = b.dataset.p, item = DATA.prefixes.find(x => x.id === id);
-          if (!Array.isArray(S.user.prefixes)) S.user.prefixes = [];
-          if (S.user.prefixes.indexOf(id) === -1){ if (!app.econ.spend(item.price)) return; S.user.prefixes.push(id); }
-          S.user.activePrefix = id; this.ui.saveMe(); this.ui.toast("Префикс активирован");
-          if (S.screen === "chat" || S.screen === "profile") this.ui.renderScreen(S.screen); else this.render(document.getElementById("screenHost"));
-        });
+          html += '<div class="card listRow"><div><b><span class="tag">' + p.id + '</span></b><div class="meta">Бонус +' + Math.round(p.income * 100) + '% к доходу</div></div><button class="' + (own ? 'ghost' : 'pri') + '" data-p="' + p.id + '">' + (own ? 'Активировать' : p.price + ' 💰') + '</button></div>';
+        }
+        el.innerHTML = html;
+        
+        const buttons = el.querySelectorAll("[data-p]");
+        const self = this;
+        for (let i = 0; i < buttons.length; i++) {
+          (function(btn) {
+            btn.onclick = async function() {
+              const id = btn.dataset.p;
+              const item = DATA.prefixes.find(function(x) { return x.id === id; });
+              if (!Array.isArray(S.user.prefixes)) S.user.prefixes = [];
+              if (S.user.prefixes.indexOf(id) === -1) {
+                if (!await app.econ.spend(item.price)) return;
+                S.user.prefixes.push(id);
+              }
+              S.user.activePrefix = id;
+              await self.ui.saveUser(); 
+              self.ui.toast("Префикс активирован");
+              self.render(document.getElementById("screenHost"));
+            };
+          })(buttons[i]);
+        }
       }
-      nicks(el){
-        el.innerHTML = DATA.nicks.map(n => {
+      
+      async nicks(el) {
+        let html = '';
+        for (let i = 0; i < DATA.nicks.length; i++) {
+          const n = DATA.nicks[i];
           const own = Array.isArray(S.user.nickStyles) && S.user.nickStyles.indexOf(n.id) !== -1;
-          return `<div class="card listRow"><div><b class="${n.id}-name">${n.name}</b><div class="meta">Переливающийся стиль ника</div></div><button class="${own?'ghost':'pri'}" data-n="${n.id}">${own?'Активировать':`${n.price} 💰`}</button></div>`;
-        }).join("");
-        el.querySelectorAll("[data-n]").forEach(b => b.onclick = () => {
-          const id = b.dataset.n, item = DATA.nicks.find(x => x.id === id);
-          if (!Array.isArray(S.user.nickStyles)) S.user.nickStyles = [];
-          if (S.user.nickStyles.indexOf(id) === -1){ if (!app.econ.spend(item.price)) return; S.user.nickStyles.push(id); }
-          S.user.activeNickStyle = id; this.ui.saveMe(); this.ui.toast("Стиль ника активирован");
-          if (S.screen === "chat" || S.screen === "profile") this.ui.renderScreen(S.screen); else this.render(document.getElementById("screenHost"));
-        });
+          html += '<div class="card listRow"><div><b class="' + n.id + '-name">' + n.name + '</b><div class="meta">Переливающийся стиль ника</div></div><button class="' + (own ? 'ghost' : 'pri') + '" data-n="' + n.id + '">' + (own ? 'Активировать' : n.price + ' 💰') + '</button></div>';
+        }
+        el.innerHTML = html;
+        
+        const buttons = el.querySelectorAll("[data-n]");
+        const self = this;
+        for (let i = 0; i < buttons.length; i++) {
+          (function(btn) {
+            btn.onclick = async function() {
+              const id = btn.dataset.n;
+              const item = DATA.nicks.find(function(x) { return x.id === id; });
+              if (!Array.isArray(S.user.nickStyles)) S.user.nickStyles = [];
+              if (S.user.nickStyles.indexOf(id) === -1) {
+                if (!await app.econ.spend(item.price)) return;
+                S.user.nickStyles.push(id);
+              }
+              S.user.activeNickStyle = id;
+              await self.ui.saveUser(); 
+              self.ui.toast("Стиль ника активирован");
+              self.render(document.getElementById("screenHost"));
+            };
+          })(buttons[i]);
+        }
       }
-      weighted(arr){ const tot = arr.reduce((s,x)=>s+x.w,0); let r = Math.random() * tot; for (const x of arr){ r -= x.w; if (r <= 0) return x; } return arr[arr.length-1]; }
-      cases(el){
-        el.innerHTML = DATA.cases.map(c => `<div class="card listRow"><div><b>${c.name}</b><div class="meta">Цена ${c.price}. Остановка автоматическая.</div></div><button class="pri" data-c="${c.id}">Купить</button></div>`).join("");
-        el.querySelectorAll("[data-c]").forEach(b => b.onclick = () => this.caseFlow(b.dataset.c));
+      
+      weighted(arr) { 
+        const tot = arr.reduce(function(s,x){ return s + x.w; }, 0); 
+        let r = Math.random() * tot; 
+        for (let i = 0; i < arr.length; i++) {
+          r -= arr[i].w; 
+          if (r <= 0) return arr[i];
+        }
+        return arr[arr.length - 1]; 
       }
-      caseFlow(id){
-        const c = DATA.cases.find(x => x.id === id); if (!c) return;
-        const chances = c.rewards.map(r => `<div class="listRow"><span>${this.ui.esc(r.label)}</span><b>${r.w}%</b></div>`).join("");
-        this.ui.modal(c.name, `<div class="card"><h3>Шансы призов</h3>${chances}</div><div class="meta">Стоимость: ${c.price} монет. Рулетка остановится сама.</div>`, `<button class="pri" id="openCase">Открыть</button>`);
-        setTimeout(() => {
+      
+      cases(el) {
+        let html = '';
+        for (let i = 0; i < DATA.cases.length; i++) {
+          const c = DATA.cases[i];
+          html += '<div class="card listRow"><div><b>' + c.name + '</b><div class="meta">Цена ' + c.price + '</div></div><button class="pri" data-c="' + c.id + '">Купить</button></div>';
+        }
+        el.innerHTML = html;
+        
+        const buttons = el.querySelectorAll("[data-c]");
+        const self = this;
+        for (let i = 0; i < buttons.length; i++) {
+          (function(btn) {
+            btn.onclick = function() { self.caseFlow(btn.dataset.c); };
+          })(buttons[i]);
+        }
+      }
+      
+      async caseFlow(id) {
+        const c = DATA.cases.find(function(x) { return x.id === id; });
+        if (!c) return;
+        
+        let chancesHtml = '';
+        for (let i = 0; i < c.rewards.length; i++) {
+          const r = c.rewards[i];
+          chancesHtml += '<div class="listRow"><span>' + this.ui.esc(r.label) + '</span><b>' + r.w + '%</b></div>';
+        }
+        
+        this.ui.modal(c.name, '<div class="card"><h3>Шансы</h3>' + chancesHtml + '</div><div class="meta">Стоимость: ' + c.price + '</div>', '<button class="pri" id="openCase">Открыть</button>');
+        
+        const self = this;
+        setTimeout(function() {
           const o = document.getElementById("openCase");
           if (!o) return;
-          o.onclick = () => {
-            if (!app.econ.spend(c.price)) return;
-            const win = this.weighted(c.rewards);
-            const preview = Array.from({ length: 54 }, (_, i) => c.rewards[i % c.rewards.length]);
+          o.onclick = async function() {
+            if (!await app.econ.spend(c.price)) return;
+            const win = self.weighted(c.rewards);
+            const preview = Array.from({ length: 54 }, function(_, i) { return c.rewards[i % c.rewards.length]; });
+            let previewHtml = '';
+            for (let i = 0; i < preview.length; i++) {
+              previewHtml += '<div class="rw">' + self.ui.esc(preview[i].label) + '</div>';
+            }
             const mdl = document.querySelector(".modal");
-            if (mdl) mdl.innerHTML = `<h2>${this.ui.esc(c.name)}</h2><div class="rollWrap"><div id="roll" class="roll">${preview.map(x => `<div class="rw">${this.ui.esc(x.label)}</div>`).join("")}</div></div><div class="meta">Рулетка запущена...</div>`;
-            setTimeout(() => this.stopRoll(win, () => { this.applyReward(win); this.ui.closeModal(); this.ui.toast("Кейс: " + win.label); this.render(document.getElementById("screenHost")); }), 700);
+            if (mdl) mdl.innerHTML = '<h2>' + self.ui.esc(c.name) + '</h2><div class="rollWrap"><div id="roll" class="roll">' + previewHtml + '</div></div><div class="meta">Крутим...</div>';
+            
+            setTimeout(function() {
+              self.stopRoll(win, async function() { 
+                await self.applyReward(win); 
+                self.ui.closeModal(); 
+                self.ui.toast('Выпало: ' + win.label); 
+                self.render(document.getElementById("screenHost")); 
+              });
+            }, 700);
           };
         }, 20);
       }
-      stopRoll(win, done){
-        const r = document.getElementById("roll"); if (!r) return done();
+      
+      stopRoll(win, done) {
+        const r = document.getElementById("roll"); 
+        if (!r) return done();
         const items = [...r.children];
-        let idx = items.findIndex((el, i) => i > 24 && el.textContent === win.label); if (idx < 0) idx = 30;
+        let idx = items.findIndex(function(el, i) { return i > 24 && el.textContent === win.label; });
+        if (idx < 0) idx = 30;
         if (items[idx]) items[idx].textContent = win.label;
-        r.classList.add("stop"); r.style.transform = `translateX(${-idx*150 + 190}px)`;
+        r.classList.add("stop"); 
+        r.style.transform = 'translateX(' + (-idx * 150 + 190) + 'px)';
         setTimeout(done, 3900);
       }
-      applyReward(r){
-        const duplicateComp = reward => {
+      
+      async applyReward(r) {
+        const duplicateComp = function(reward) {
           const w = Number(reward.w || 100);
-          if (w <= 0.2) return 120000;
-          if (w <= 1) return 60000;
-          if (w <= 3) return 25000;
-          if (w <= 7) return 10000;
+          if (w <= 0.2) return 120000; 
+          if (w <= 1) return 60000; 
+          if (w <= 3) return 25000; 
+          if (w <= 7) return 10000; 
           return 3000;
         };
-        if (r.t === "coins") app.econ.add(r.a, "case");
+        
+        if (r.t === "coins") await app.econ.add(r.a, "case");
         if (!Array.isArray(S.user.prefixes)) S.user.prefixes = [];
         if (!Array.isArray(S.user.nickStyles)) S.user.nickStyles = [];
-        if (r.t === "prefix"){
-          if (S.user.prefixes.indexOf(r.id) === -1){
-            S.user.prefixes.push(r.id); S.user.activePrefix = r.id;
-          } else {
-            const c = duplicateComp(r); app.econ.add(c, "duplicate_prefix"); this.ui.toast(`Дубликат префикса: +${c} монет`);
+        
+        if (r.t === "prefix") {
+          if (S.user.prefixes.indexOf(r.id) === -1) { 
+            S.user.prefixes.push(r.id); 
+            S.user.activePrefix = r.id; 
+          } else { 
+            const c = duplicateComp(r); 
+            await app.econ.add(c, "dup_prefix"); 
+            this.ui.toast('Дубликат: +' + c); 
           }
         }
-        if (r.t === "nick"){
-          if (S.user.nickStyles.indexOf(r.id) === -1){
-            S.user.nickStyles.push(r.id); S.user.activeNickStyle = r.id;
-          } else {
-            const c = duplicateComp(r); app.econ.add(c, "duplicate_nick"); this.ui.toast(`Дубликат стиля ника: +${c} монет`);
+        
+        if (r.t === "nick") {
+          if (S.user.nickStyles.indexOf(r.id) === -1) { 
+            S.user.nickStyles.push(r.id); 
+            S.user.activeNickStyle = r.id; 
+          } else { 
+            const c = duplicateComp(r); 
+            await app.econ.add(c, "dup_nick"); 
+            this.ui.toast('Дубликат: +' + c); 
           }
         }
-        if (r.t === "up") S.user.upgrades[r.f] = (S.user.upgrades[r.f]||0) + r.a;
-        if (r.t === "mod") app.moder.grant(S.user.id, "god_case");
-        this.ui.saveMe();
+        
+        if (r.t === "up") S.user.upgrades[r.f] = (S.user.upgrades[r.f] || 0) + r.a;
+        if (r.t === "mod") await app.moder.grant(S.user.login, "god_case");
+        await this.ui.saveUser();
       }
     }
 
     class Chat {
-      constructor(db,ui){ this.db=db; this.ui=ui; this.poll=null; }
-      id(a,b){ return [a,b].sort().join("__"); }
-      sysId(uid){ return this.id(uid,"system"); }
-      chatTitleById(chatId){
-        const parts = String(chatId || "").split("__");
-        if (parts.length !== 2) return this.ui.esc(chatId);
-        const a = this.db.g(`users/${parts[0]}`, null);
-        const b = this.db.g(`users/${parts[1]}`, null);
-        return `${this.ui.esc(a ? a.login : parts[0])} ↔ ${this.ui.esc(b ? b.login : parts[1])}`;
+      constructor(db, ui) { 
+        this.db = db; 
+        this.ui = ui; 
+        this.chatListener = null; 
+        this.lastSend = 0;
+        this.renderedMsgIds = new Set();
+        this.initialLoadDone = false;
       }
-      path(){
-        if (S.chatType === "global") return "global_chat/messages";
-        if (S.chatType === "system") return `private_chats/${this.sysId(S.user.id)}/messages`;
-        return `private_chats/${S.chatId}/messages`;
-      }
-      render(el){
-        el.innerHTML = `<div class="chatShell">
-          <aside class="chatList"><div class="chatHead">Чаты</div><div id="chatItems" class="chatItems"></div></aside>
-          <section class="chatMain"><div id="chatTitle" class="chatHead"></div><div id="msgs" class="msgs"></div>
-          <form id="chatForm" class="compose"><input id="chatInput" placeholder="Сообщение"><button class="pri">➤</button></form></section>
-        </div>`;
-        document.getElementById("chatForm").onsubmit = e => { e.preventDefault(); this.send(); };
-        this.renderList(); this.renderMsgs();
-        clearInterval(this.poll);
-        this.poll = setInterval(() => { if (S.screen === "chat") this.renderMsgs(); }, 5000);
-      }
-      renderList(){
-        app.friends.sync();
-        const list = [{ id: "global", type: "global", name: "🌐 Общий чат" }, { id: this.sysId(S.user.id), type: "system", name: "🔔 Система" }];
-        Object.keys(S.user.friends || {}).forEach(fid => {
-          const f = this.db.g(`users/${fid}`, null);
-          if (f) list.push({ id: this.id(S.user.id,fid), type: "private", name: f.login });
-        });
-        if (S.user.role === "admin" || S.user.role === "moderator"){
-          this.db.getChatIndex().forEach(chatId => {
-            const msgs = this.db.g(`private_chats/${chatId}/messages`, []);
-            if (msgs.length && !list.some(c => c.id === chatId)) list.push({ id: chatId, type: "review", name: "👁 " + this.chatTitleById(chatId) });
-          });
+      
+      render(el) {
+        el.innerHTML = `
+          <div class="chatShell">
+            <aside class="chatList"><div class="chatHead">Чаты</div>
+              <div id="chatItems" class="chatItems">
+                <button class="chatItem active" data-type="global"><span>🌍</span><div><b>Общий чат</b><div class="meta">публичный</div></div></button>
+              </div>
+            </aside>
+            <section class="chatMain">
+              <div id="chatTitle" class="chatHead">Общий чат</div>
+              <div id="msgs" class="msgs"></div>
+              <form id="chatForm" class="compose"><input id="chatInput" placeholder="Сообщение..." maxlength="500"><button class="pri" type="submit" id="sendBtn">➤</button></form>
+            </section>
+          </div>`;
+        
+        const form = document.getElementById("chatForm");
+        const input = document.getElementById("chatInput");
+        const sendBtn = document.getElementById("sendBtn");
+        const self = this;
+        
+        if (form) {
+          form.onsubmit = async function(e) {
+            e.preventDefault();
+            sendBtn.disabled = true;
+            sendBtn.textContent = "⏳";
+            try { 
+              await self.send(); 
+              if (input) input.value = ""; 
+            } catch(err) { 
+              console.error("Send error:", err); 
+              self.ui.toast("Ошибка отправки"); 
+            } finally { 
+              sendBtn.disabled = false; 
+              sendBtn.textContent = "➤"; 
+            }
+          };
         }
-        const box = document.getElementById("chatItems");
-        box.innerHTML = list.map(c => `<button class="chatItem ${S.chatId===c.id|| (c.type==="global"&&S.chatType==="global") ? "active":""}" data-id="${this.ui.esc(c.id)}" data-type="${c.type}"><span>${c.type==="global"?"🌍":c.type==="system"?"🔔":"💬"}</span><div><b>${this.ui.esc(c.name)}</b><div class="meta">${c.type==="private"?"личный чат":c.type==="review"?"просмотр ЛС":" "}</div></div></button>`).join("");
-        box.querySelectorAll("[data-id]").forEach(b => b.onclick = () => {
-          S.chatId = b.dataset.id; S.chatType = b.dataset.type;
-          if (S.chatType === "system"){ S.user.unreadSystem = 0; this.ui.saveMe(); }
-          this.render(document.getElementById("screenHost"));
-        });
+        
+        this.renderedMsgIds.clear();
+        this.initialLoadDone = false;
+        
+        this.setupChatListener();
+        this.loadInitialMessages();
       }
-      canSend(){
-        const fresh = this.db.g(`users/${S.user.id}`, null); if (fresh) S.user = fresh;
+      
+      setupChatListener() {
+        const path = "public_chat/messages";
+        
+        if (this.chatListener && fbDB) {
+          fbDB.ref(path).off('child_added', this.chatListener);
+        }
+        
+        const self = this;
+        
+        this.chatListener = function(snap) {
+          const msg = snap.val();
+          if (msg && !self.renderedMsgIds.has(msg.id)) {
+            self.appendMessage(msg);
+            self.renderedMsgIds.add(msg.id);
+            
+            const box = document.getElementById("msgs");
+            if (box) {
+              box.scrollTop = box.scrollHeight;
+            }
+          }
+        };
+        
+        if (fbDB) {
+          fbDB.ref(path).orderByChild("at").limitToLast(1).on('child_added', this.chatListener);
+        }
+      }
+      
+      async loadInitialMessages() {
+        if (this.initialLoadDone) return;
+        
+        const box = document.getElementById("msgs");
+        if (!box || !fbDB) return;
+        
+        try {
+          box.innerHTML = '<div class="meta">Загрузка...</div>';
+          
+          const snap = await fbDB.ref("public_chat/messages").orderByChild("at").limitToLast(50).once('value');
+          const obj = snap.val() || {};
+          const arr = Object.values(obj).sort(function(a,b) { return (a.at||0) - (b.at||0); });
+          
+          box.innerHTML = '';
+          this.renderedMsgIds.clear();
+          
+          if (arr.length === 0) { 
+            box.innerHTML = '<div class="meta">Пока нет сообщений — будь первым! 👋</div>'; 
+          } else {
+            for (let i = 0; i < arr.length; i++) {
+              const m = arr[i];
+              this.appendMessage(m);
+              this.renderedMsgIds.add(m.id);
+            }
+            box.scrollTop = box.scrollHeight;
+          }
+          
+          this.initialLoadDone = true;
+        } catch(err) {
+          console.error("Load messages error:", err);
+          box.innerHTML = '<div class="meta" style="color:var(--bad)">Ошибка загрузки</div>';
+        }
+      }
+      
+      canSend() {
+        if (!S.user) return "Не авторизован";
         if (S.user.role === "admin" || S.user.role === "moderator") return true;
-        if (S.user.bannedUntil && S.user.bannedUntil > Date.now()) return "Вы забанены";
-        if (S.user.mutedUntil && S.user.mutedUntil > Date.now()) return "У вас мут";
+        if (S.user.bannedUntil && S.user.bannedUntil > Date.now()) {
+          return `Вы заблокированы до ${new Date(S.user.bannedUntil).toLocaleString("ru-RU")}`;
+        }
+        if (S.user.mutedUntil && S.user.mutedUntil > Date.now()) {
+          const by = S.user.mutedBy || "Модератор";
+          const until = new Date(S.user.mutedUntil).toLocaleString("ru-RU");
+          return `У вас мут от ${by} до ${until}`;
+        }
         return true;
       }
-      send(){
-        const ok = this.canSend(); if (ok !== true) return this.ui.toast(ok);
-        const inp = document.getElementById("chatInput");
-        const txt = inp.value.trim(); if (!txt) return;
-        if (S.chatType === "review") return this.ui.toast("Режим просмотра чужого ЛС");
-        if (S.chatType === "private"){
-          const ids = S.chatId.split("__");
-          this.db.rememberChat(S.chatId);
-          ids.filter(i => i !== S.user.id).forEach(i => {
-            const o = this.db.g(`users/${i}`, null);
-            if (o){ o.chats = [...new Set([...(o.chats||[]), S.chatId])]; this.db.saveUser(o); }
-          });
-          S.user.chats = [...new Set([...(S.user.chats||[]), S.chatId])];
-          this.ui.saveMe();
+      
+      async send() {
+        const check = this.canSend();
+        if (check !== true) { this.ui.toast(check); return; }
+        const input = document.getElementById("chatInput");
+        const text = (input && input.value) ? input.value.trim() : "";
+        if (!text) return;
+        const now = Date.now();
+        if (this.lastSend && now - this.lastSend < 1000) return this.ui.toast("Подождите 1 сек");
+        this.lastSend = now;
+        this.detectBad(text);
+        
+        const message = {
+          id: this.db.id("msg"),
+          senderId: S.user.login,
+          senderName: S.user.login,
+          senderRole: S.user.role || "user",
+          senderRank: S.user.rank || "",
+          senderPrefix: S.user.activePrefix || "",
+          senderNickStyle: S.user.activeNickStyle || "",
+          text: this.ui.esc(text),
+          at: Date.now()
+        };
+        
+        if (fbDB) {
+          await fbDB.ref("public_chat/messages").push(message);
         }
-        this.detectBad(txt);
-        const arr = this.db.g(this.path(), []);
-        arr.push({ id: this.db.id("msg"), senderId: S.user.id, text: this.ui.esc(txt), at: Date.now() });
-        this.db.s(this.path(), arr);
-        inp.value = ""; this.renderMsgs();
       }
-      detectBad(txt){
-        const l = txt.toLowerCase();
-        if (!DATA.badWords.some(w => l.indexOf(w) !== -1)) return;
-        const v = this.db.g("violations", []);
-        v.push({ id: this.db.id("v"), offenderId: S.user.id, text: this.ui.esc(txt), chatType: S.chatType, chatId: S.chatId, at: Date.now(), status: "new" });
-        this.db.s("violations", v);
-        this.db.allUsers().filter(u => u.role === "admin" || u.role === "moderator").forEach(u => this.sendSystem(u.id, `Анти-мат: ${S.user.login}: "${txt.slice(0,120)}"`));
+      
+      appendMessage(m) {
+        const box = document.getElementById("msgs");
+        if (!box) return;
+        
+        if (box.querySelector('.meta')) {
+          box.innerHTML = '';
+        }
+        
+        if (m.system || m.senderId === "system") {
+          box.insertAdjacentHTML('beforeend', '<div class="sys">' + this.ui.esc(m.text) + '</div>');
+          return;
+        }
+        
+        const me = m.senderId === (S.user && S.user.login);
+        
+        let senderHtml = '';
+        if (m.senderRole === "admin") {
+          senderHtml += '<span class="tag" style="background:var(--bad);color:#000;margin-right:4px">ADMIN</span>';
+        } else if (m.senderRole === "moderator") {
+          senderHtml += '<span class="tag" style="background:var(--warn);color:#000;margin-right:4px">MOD</span>';
+        }
+        if (m.senderPrefix) {
+          senderHtml += '<span class="tag" style="margin-right:4px">' + this.ui.esc(m.senderPrefix) + '</span>';
+        }
+        const nickClass = m.senderNickStyle ? m.senderNickStyle + '-name' : '';
+        senderHtml += '<span class="' + nickClass + '" style="font-weight:900">' + this.ui.esc(m.senderName) + '</span>';
+        senderHtml += ':';
+        
+        const timeStr = new Date(m.at).toLocaleTimeString("ru-RU", {hour:"2-digit",minute:"2-digit"});
+        const html = '<div class="mg ' + (me ? "me" : "") + '"><div class="bubble"><span class="sender">' + senderHtml + '</span>' + this.ui.esc(m.text) + '<span class="tm">' + timeStr + '</span></div></div>';
+        box.insertAdjacentHTML('beforeend', html);
       }
-      sendSystem(uid, txt){
-        const p = `private_chats/${this.sysId(uid)}/messages`;
-        const arr = this.db.g(p, []);
-        arr.push({ id: this.db.id("msg"), senderId: "system", text: txt, at: Date.now(), system: true });
-        this.db.s(p, arr);
-        const u = this.db.g(`users/${uid}`, null);
-        if (u){ u.unreadSystem = (u.unreadSystem||0)+1; u.chats = [...new Set([...(u.chats||[]), this.sysId(uid)])]; this.db.saveUser(u); if (S.user && S.user.id === uid){ S.user = u; this.ui.refreshTop(); } }
+      
+      detectBad(text) {
+        const lower = text.toLowerCase();
+        const hasBad = DATA.badWords.some(function(w) { return lower.indexOf(w) !== -1; });
+        if (!hasBad) return;
+        this.db.push("violations", {
+          id: this.db.id("v"), 
+          offenderId: (S.user && S.user.login) || "unknown", 
+          text: this.ui.esc(text), 
+          at: Date.now(), 
+          status: "new"
+        });
       }
-      openSystem(){
-        S.chatType = "system"; S.chatId = this.sysId(S.user.id); S.user.unreadSystem = 0; this.ui.saveMe();
-        const msgs = this.db.g(this.path(), []).slice(-14).reverse();
-        this.ui.modal("Системные уведомления", msgs.map(m => `<div class="card"><div>${this.ui.esc(m.text)}</div><div class="meta">${new Date(m.at).toLocaleString("ru-RU")}</div></div>`).join("") || `<div class="meta">Пусто</div>`);
+      
+      async openSystem() {
+        if (!S.user) return;
+        const uid = S.user.login;
+        if (!fbDB) return;
+        const snap = await fbDB.ref('private_chats/system__' + uid + '/messages').orderByChild("at").limitToLast(20).once('value');
+        const arr = Object.values(snap.val() || {}).sort(function(a,b) { return (b.at||0) - (a.at||0); });
+        
+        let html = '';
+        if (arr.length === 0) {
+          html = '<div class="meta">Пусто</div>';
+        } else {
+          for (let i = 0; i < arr.length; i++) {
+            const m = arr[i];
+            html += '<div class="card"><div>' + this.ui.esc(m.text) + '</div><div class="meta">' + new Date(m.at).toLocaleString("ru-RU") + '</div></div>';
+          }
+        }
+        
+        this.ui.modal("🔔 Системные уведомления", html);
       }
-      renderMsgs(){
-        const box = document.getElementById("msgs"); if (!box) return;
-        const ttl = document.getElementById("chatTitle");
-        if (ttl) ttl.textContent = S.chatType === "global" ? "Общий чат" : S.chatType === "system" ? "Системные уведомления" : S.chatType === "review" ? "Просмотр ЛС" : "Личный чат";
-        const arr = this.db.g(this.path(), []);
-        box.innerHTML = arr.map(m => {
-          if (m.system || m.senderId === "system") return `<div class="sys">${this.ui.esc(m.text)}</div>`;
-          const me = m.senderId === S.user.id;
-          return `<div class="mg ${me?"me":""}"><div class="bubble"><span class="sender">${this.ui.nameBy(m.senderId)}</span>${this.ui.esc(m.text)}<span class="tm">${new Date(m.at).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}</span></div></div>`;
-        }).join("") || `<div class="meta">Пока нет сообщений</div>`;
-        box.scrollTop = box.scrollHeight;
+      
+      cleanup() {
+        if (this.chatListener && fbDB) {
+          fbDB.ref("public_chat/messages").off('child_added', this.chatListener);
+          this.chatListener = null;
+        }
       }
     }
 
     class Friends {
-      constructor(db,ui){ this.db=db; this.ui=ui; }
-      sync(){
+      constructor(db, ui) { this.db = db; this.ui = ui; }
+      
+      async sync() {
         if (!S.user) return;
-        const fresh = this.db.g(`users/${S.user.id}`, null);
+        const fresh = await this.db.get('users/' + S.user.login, null);
         if (!fresh) return;
-        fresh.requests = { ...(fresh.requests||{}) }; fresh.outgoingRequests = { ...(fresh.outgoingRequests||{}) }; fresh.friends = { ...(fresh.friends||{}) };
-        this.db.allUsers().forEach(o => {
-          if (o.id === fresh.id) return;
-          if (o.friends && o.friends[fresh.id]){
-            fresh.friends[o.id] = o.friends[fresh.id];
-            delete fresh.requests[o.id];
-            delete fresh.outgoingRequests[o.id];
-            const cid = app.chat.id(fresh.id, o.id);
-            fresh.chats = [...new Set([...(fresh.chats||[]), cid])];
-            this.db.rememberChat(cid);
-          }
-        });
-        Object.values(this.db.g("friend_requests_index", {})).forEach(r => {
-          if (r.targetId === fresh.id && r.status === "pending" && !fresh.friends[r.senderId]) fresh.requests[r.senderId] = { senderId:r.senderId, at:r.at };
-          if (r.senderId === fresh.id && r.status === "pending" && !fresh.friends[r.targetId]) fresh.outgoingRequests[r.targetId] = { targetId:r.targetId, at:r.at };
-        });
-        S.user = fresh; this.db.saveUser(S.user);
+        S.user.friends = { ...(S.user.friends || {}), ...(fresh.friends || {}) };
+        S.user.requests = { ...(S.user.requests || {}), ...(fresh.requests || {}) };
+        S.user.outgoingRequests = { ...(S.user.outgoingRequests || {}), ...(fresh.outgoingRequests || {}) };
+        S.user.chats = [...new Set([...(S.user.chats || []), ...(fresh.chats || [])])];
       }
-      render(el){
-        this.sync();
-        el.innerHTML = `<div class="grid">
-          <div class="card"><h3 class="title">Поиск игроков</h3><input id="qUser" placeholder="Логин"><div id="sr" class="grid"></div></div>
-          <div class="card"><h3 class="title">Входящие заявки</h3><div id="inReq"></div></div>
-          <div class="card"><h3 class="title">Исходящие заявки</h3><div id="outReq"></div></div>
-          <div class="card"><h3 class="title">Друзья</h3><div id="frList"></div></div>
-        </div>`;
-        document.getElementById("qUser").oninput = e => this.search(e.target.value);
-        this.rIn(); this.rOut(); this.rFriends();
+      
+      render(el) {
+        el.innerHTML = `
+          <div class="grid">
+            <div class="card"><h3 class="title">Поиск игроков</h3><input id="qUser" placeholder="Логин"><div id="sr" class="grid"></div></div>
+            <div class="card"><h3 class="title">Входящие заявки</h3><div id="inReq"></div></div>
+            <div class="card"><h3 class="title">Исходящие заявки</h3><div id="outReq"></div></div>
+            <div class="card"><h3 class="title">Друзья</h3><div id="frList"></div></div>
+          </div>`;
+        
+        const qUser = document.getElementById("qUser");
+        const self = this;
+        if (qUser) qUser.oninput = function(e) { self.search(e.target.value); };
+        
+        this.rIn(); 
+        this.rOut(); 
+        this.rFriends();
       }
-      search(q){
+      
+      async search(q) {
         const box = document.getElementById("sr");
-        if (!q.trim()){ box.innerHTML = ""; return; }
+        if (!q.trim()) { box.innerHTML = ""; return; }
         const ql = String(q || "").toLowerCase();
-        const users = this.db.allUsers().filter(u => u.id !== S.user.id && !S.user.friends[u.id] && !(S.user.outgoingRequests||{})[u.id] && !(u.requests||{})[S.user.id] && String(u.login || "").toLowerCase().indexOf(ql) !== -1);
-        box.innerHTML = users.map(u => `<div class="listRow"><div>${this.ui.nameBy(u)}<div class="meta">${this.ui.roleText(u)}</div></div><button class="pri" data-add="${u.id}">➕</button></div>`).join("") || `<div class="meta">Никого не найдено</div>`;
-        box.querySelectorAll("[data-add]").forEach(b => b.onclick = () => this.req(b.dataset.add));
+        const users = await this.db.allUsers();
+        const filtered = users.filter(function(u) {
+          return u.login !== S.user.login && 
+            !(S.user.friends && S.user.friends[u.login]) && 
+            !(S.user.outgoingRequests && S.user.outgoingRequests[u.login]) && 
+            String(u.login || "").toLowerCase().indexOf(ql) !== -1;
+        });
+        
+        let html = '';
+        if (filtered.length === 0) {
+          html = '<div class="meta">Никого не найдено</div>';
+        } else {
+          for (let i = 0; i < filtered.length; i++) {
+            const u = filtered[i];
+            html += '<div class="listRow"><div>' + this.ui.nameDisplay(u) + '<div class="meta">' + this.ui.roleText(u) + '</div></div><button class="pri" data-add="' + this.ui.esc(u.login) + '">➕</button></div>';
+          }
+        }
+        box.innerHTML = html;
+        
+        const buttons = box.querySelectorAll("[data-add]");
+        const self = this;
+        for (let i = 0; i < buttons.length; i++) {
+          (function(btn) {
+            btn.onclick = function() { self.req(btn.dataset.add); };
+          })(buttons[i]);
+        }
       }
-      req(tid){
-        const t = this.db.g(`users/${tid}`, null); if (!t) return;
-        if (t.requests[S.user.id] || (S.user.outgoingRequests||{})[tid]) return this.ui.toast("Заявка уже есть");
-        S.user.outgoingRequests = S.user.outgoingRequests || {}; t.requests = t.requests || {};
-        t.requests[S.user.id] = { senderId:S.user.id, at:Date.now() }; S.user.outgoingRequests[tid] = { targetId:tid, at:Date.now() };
-        this.db.saveUser(t); this.ui.saveMe();
-        const idx = this.db.g("friend_requests_index", {}); idx[`${tid}__${S.user.id}`] = { targetId:tid, senderId:S.user.id, at:Date.now(), status:"pending" }; this.db.s("friend_requests_index", idx);
+      
+      async req(tid) {
+        const t = await this.db.get('users/' + tid, null);
+        if (!t) return;
+        if ((t.requests && t.requests[S.user.login]) || (S.user.outgoingRequests && S.user.outgoingRequests[tid])) {
+          return this.ui.toast("Заявка уже есть");
+        }
+        S.user.outgoingRequests = S.user.outgoingRequests || {};
+        t.requests = t.requests || {};
+        t.requests[S.user.login] = { senderId: S.user.login, at: Date.now() };
+        S.user.outgoingRequests[tid] = { targetId: tid, at: Date.now() };
+        await this.db.set('users/' + tid, t);
+        await this.ui.saveUser();
+        
+        const idx = await this.db.get("friend_requests_index", {});
+        idx[tid + '__' + S.user.login] = { targetId: tid, senderId: S.user.login, at: Date.now(), status: "pending" };
+        await this.db.set("friend_requests_index", idx);
         this.ui.toast("Заявка отправлена");
         this.render(document.getElementById("screenHost"));
       }
-      clearReqPair(myId, otherId){
-        const idx = this.db.g("friend_requests_index", {});
-        delete idx[`${myId}__${otherId}`];
-        delete idx[`${otherId}__${myId}`];
-        this.db.s("friend_requests_index", idx);
-        const me = this.db.g(`users/${myId}`, null), ot = this.db.g(`users/${otherId}`, null);
-        if (me){ if (me.requests) delete me.requests[otherId]; if (me.outgoingRequests) delete me.outgoingRequests[otherId]; this.db.saveUser(me); if (S.user.id === myId) S.user = me; }
-        if (ot){ if (ot.requests) delete ot.requests[myId]; if (ot.outgoingRequests) delete ot.outgoingRequests[myId]; this.db.saveUser(ot); if (S.user.id === otherId) S.user = ot; }
+      
+      async clearReqPair(myLogin, otherLogin) {
+        const idx = await this.db.get("friend_requests_index", {});
+        delete idx[myLogin + '__' + otherLogin];
+        delete idx[otherLogin + '__' + myLogin];
+        await this.db.set("friend_requests_index", idx);
+        
+        const me = await this.db.get('users/' + myLogin, null);
+        const ot = await this.db.get('users/' + otherLogin, null);
+        
+        if (me) {
+          if (me.requests) delete me.requests[otherLogin];
+          if (me.outgoingRequests) delete me.outgoingRequests[otherLogin];
+          await this.db.set('users/' + myLogin, me);
+          if (S.user.login === myLogin) S.user = JSON.parse(JSON.stringify(me));
+        }
+        if (ot) {
+          if (ot.requests) delete ot.requests[myLogin];
+          if (ot.outgoingRequests) delete ot.outgoingRequests[myLogin];
+          await this.db.set('users/' + otherLogin, ot);
+          if (S.user.login === otherLogin) S.user = JSON.parse(JSON.stringify(ot));
+        }
       }
-      accept(sid){
-        const s = this.db.g(`users/${sid}`, null); if (!s) return this.decline(sid);
-        S.user.friends[sid] = { since: Date.now() }; s.friends[S.user.id] = { since: Date.now() };
-        const cid = app.chat.id(S.user.id, sid);
-        S.user.chats = [...new Set([...(S.user.chats||[]), cid])]; s.chats = [...new Set([...(s.chats||[]), cid])];
-        this.clearReqPair(S.user.id, sid);
-        this.db.saveUser(s); this.ui.saveMe();
-        this.db.rememberChat(cid);
-        if (!this.db.g(`private_chats/${cid}/messages`, null)) this.db.s(`private_chats/${cid}/messages`, [{ id:this.db.id("msg"), senderId:"system", text:"Личный чат создан автоматически.", at:Date.now(), system:true }]);
+      
+      async accept(sid) {
+        const s = await this.db.get('users/' + sid, null);
+        if (!s) return this.decline(sid);
+        S.user.friends[sid] = { since: Date.now() };
+        s.friends[S.user.login] = { since: Date.now() };
+        const cid = [S.user.login, sid].sort().join("__");
+        S.user.chats = [...new Set([...(S.user.chats || []), cid])];
+        s.chats = [...new Set([...(s.chats || []), cid])];
+        await this.clearReqPair(S.user.login, sid);
+        await this.db.set('users/' + sid, s);
+        await this.ui.saveUser();
+        
+        if (fbDB) {
+          const chatRef = fbDB.ref('private_chats/' + cid + '/messages');
+          const snap = await chatRef.once('value');
+          if (!snap.val()) {
+            await chatRef.set([{ 
+              id: this.db.id("msg"), 
+              senderId: "system", 
+              text: "Личный чат создан автоматически.", 
+              at: Date.now(), 
+              system: true 
+            }]);
+          }
+        }
         this.render(document.getElementById("screenHost"));
       }
-      decline(sid){ this.clearReqPair(S.user.id, sid); this.ui.saveMe(); this.rIn(); this.rOut(); }
-      cancel(tid){ this.clearReqPair(S.user.id, tid); this.ui.saveMe(); this.rIn(); this.rOut(); }
-      rIn(){
+      
+      async decline(sid) { 
+        await this.clearReqPair(S.user.login, sid); 
+        await this.ui.saveUser(); 
+        this.rIn(); 
+        this.rOut(); 
+      }
+      
+      async cancel(tid) { 
+        await this.clearReqPair(S.user.login, tid); 
+        await this.ui.saveUser(); 
+        this.rIn(); 
+        this.rOut(); 
+      }
+      
+      rIn() {
         const box = document.getElementById("inReq");
-        const ids = [...new Set([...Object.keys(S.user.requests||{}), ...Object.values(this.db.g("friend_requests_index", {})).filter(r=>r.targetId===S.user.id&&r.status==="pending").map(r=>r.senderId)])];
-        box.innerHTML = ids.map(id => { const u=this.db.g(`users/${id}`,null); return u?`<div class="listRow"><div>${this.ui.nameBy(u)}</div><div class="row"><button class="pri" data-a="${id}">✅</button><button class="danger" data-d="${id}">❌</button></div></div>`:""; }).join("") || `<div class="meta">Нет заявок</div>`;
-        box.querySelectorAll("[data-a]").forEach(b => b.onclick = () => this.accept(b.dataset.a));
-        box.querySelectorAll("[data-d]").forEach(b => b.onclick = () => this.decline(b.dataset.d));
+        if (!box) return;
+        const ids = Object.keys(S.user.requests || {});
+        let html = '';
+        if (ids.length === 0) {
+          html = '<div class="meta">Нет заявок</div>';
+        } else {
+          for (let i = 0; i < ids.length; i++) {
+            const id = ids[i];
+            html += '<div class="listRow"><div>' + this.ui.esc(id) + '</div><div class="row"><button class="pri" data-a="' + this.ui.esc(id) + '">✅</button><button class="danger" data-d="' + this.ui.esc(id) + '">❌</button></div></div>';
+          }
+        }
+        box.innerHTML = html;
+        
+        const acceptBtns = box.querySelectorAll("[data-a]");
+        const self = this;
+        for (let i = 0; i < acceptBtns.length; i++) {
+          (function(btn) {
+            btn.onclick = function() { self.accept(btn.dataset.a); };
+          })(acceptBtns[i]);
+        }
+        
+        const declineBtns = box.querySelectorAll("[data-d]");
+        for (let i = 0; i < declineBtns.length; i++) {
+          (function(btn) {
+            btn.onclick = function() { self.decline(btn.dataset.d); };
+          })(declineBtns[i]);
+        }
       }
-      rOut(){
+      
+      rOut() {
         const box = document.getElementById("outReq");
-        const ids = Object.keys(S.user.outgoingRequests||{});
-        box.innerHTML = ids.map(id => { const u=this.db.g(`users/${id}`,null); return u?`<div class="listRow"><div>${this.ui.nameBy(u)}<div class="meta">ожидает ответ</div></div><button class="danger" data-c="${id}">Отменить</button></div>`:""; }).join("") || `<div class="meta">Нет исходящих</div>`;
-        box.querySelectorAll("[data-c]").forEach(b => b.onclick = () => this.cancel(b.dataset.c));
+        if (!box) return;
+        const ids = Object.keys(S.user.outgoingRequests || {});
+        let html = '';
+        if (ids.length === 0) {
+          html = '<div class="meta">Нет исходящих</div>';
+        } else {
+          for (let i = 0; i < ids.length; i++) {
+            const id = ids[i];
+            html += '<div class="listRow"><div>' + this.ui.esc(id) + ' <div class="meta">ожидает ответ</div></div><button class="danger" data-c="' + this.ui.esc(id) + '">Отменить</button></div>';
+          }
+        }
+        box.innerHTML = html;
+        
+        const cancelBtns = box.querySelectorAll("[data-c]");
+        const self = this;
+        for (let i = 0; i < cancelBtns.length; i++) {
+          (function(btn) {
+            btn.onclick = function() { self.cancel(btn.dataset.c); };
+          })(cancelBtns[i]);
+        }
       }
-      rFriends(){
-        const box = document.getElementById("frList"), ids = Object.keys(S.user.friends||{});
-        box.innerHTML = ids.map(id => {
-          const f = this.db.g(`users/${id}`, null); if (!f) return "";
-          const on = Date.now() - (f.lastSeen||0) < 300000;
-          return `<div class="listRow"><div>${this.ui.nameBy(f)}<div class="meta">${on?"🟢 онлайн":"⚫ офлайн"}</div></div><div class="row"><button class="ghost" data-pm="${id}">💬</button><button class="pri" data-g="${id}">🎁100</button></div></div>`;
-        }).join("") || `<div class="meta">Пока нет друзей</div>`;
-        box.querySelectorAll("[data-pm]").forEach(b => b.onclick = () => { S.chatType = "private"; S.chatId = app.chat.id(S.user.id, b.dataset.pm); app.ui.renderScreen("chat"); });
-        box.querySelectorAll("[data-g]").forEach(b => b.onclick = () => {
-          const f = this.db.g(`users/${b.dataset.g}`, null); if (!f || !app.econ.spend(100)) return;
-          f.coins += 100; this.db.saveUser(f); app.chat.sendSystem(f.id, `${S.user.login} отправил вам 100 монет.`); this.ui.toast("Подарок отправлен");
-        });
-      }
-    }
-
-    class Moder {
-      constructor(db,ui){ this.db=db; this.ui=ui; }
-      rights(){
-        if (S.user.role === "admin") return { warn:true, mute:true, ban:true };
-        const mods = this.db.g("moderators_credentials", {});
-        const e = Object.values(mods).find(m => m.userId === S.user.id && m.active !== false);
-        return e?.rights || { warn:true, mute:false, ban:false };
-      }
-      p(rank){ return { user:0,"ml.модер":1,"модер":2,"ст.модер":3,"мл.админ":4,admin:9 }[rank] || 0; }
-      canAffect(t){ if (S.user.role === "admin") return true; return this.p(S.user.rank||"ml.модер") > this.p(t.rank||t.role||"user"); }
-      grant(uid, source="manual"){
-        const u = this.db.g(`users/${uid}`, null); if (!u) return;
-        const login = "Moder_" + Math.floor(1000 + Math.random()*9000);
-        const password = String(Math.floor(100000 + Math.random()*900000));
-        u.role = "moderator"; if (!u.rank || u.rank === "user") u.rank = "ml.модер";
-        this.db.saveUser(u);
-        const creds = this.db.g("moderators_credentials", {});
-        creds[login] = { login, password, userId:uid, rank:u.rank, rights:{ warn:true, mute:false, ban:false }, source, active:true, createdAt:Date.now() };
-        this.db.s("moderators_credentials", creds);
-        if (!this.db.g(`moderators_stats/${uid}`, null)) this.db.s(`moderators_stats/${uid}`, { warnings:0,mutes:0,bans:0 });
-        app.chat.sendSystem(uid, `Вам выдана модерка. Логин: ${login}. Пароль: ${password}. Ранг: ${u.rank}.`);
-        this.log("grant_mod", uid, source);
-        if (S.user && S.user.id === uid) S.user = u;
-      }
-      addStat(field){
-        const st = this.db.g(`moderators_stats/${S.user.id}`, { warnings:0,mutes:0,bans:0 });
-        st[field] = (st[field]||0)+1; this.db.s(`moderators_stats/${S.user.id}`, st);
-        if ((S.user.rank||"ml.модер") === "ml.модер" && st.warnings >= 30) this.setRank("модер",{ warn:true, mute:true, ban:false });
-        if ((S.user.rank||"ml.модер") === "модер" && st.warnings >= 15 && st.mutes >= 20) this.setRank("ст.модер",{ warn:true, mute:true, ban:true });
-      }
-      setRank(rank, rights){
-        S.user.rank = rank; this.db.saveUser(S.user);
-        const creds = this.db.g("moderators_credentials", {});
-        Object.values(creds).forEach(c => { if (c.userId === S.user.id){ c.rank = rank; c.rights = rights; } });
-        this.db.s("moderators_credentials", creds);
-        this.ui.toast("Повышение: " + rank);
-      }
-      log(action, target, detail){ const l = this.db.g("mod_logs", []); l.push({ id:this.db.id("log"), action, moderatorId:S.user?S.user.id:"system", targetId:target, detail, at:Date.now() }); this.db.s("mod_logs", l); }
-      targetReason(){ const id=document.getElementById("modTarget").value, rs=this.ui.esc(document.getElementById("modReason").value.trim()||"Без причины"); return { t:this.db.g(`users/${id}`,null), rs }; }
-      warn(){
-        const r = this.rights(); if (!r.warn) return this.ui.toast("Нет права warn");
-        const { t, rs } = this.targetReason(); if (!t) return;
-        if (!this.canAffect(t)) return this.ui.toast("Нельзя наказать равный/высший ранг");
-        t.warnings = t.warnings || []; t.warnings.push({ by:S.user.id, reason:rs, at:Date.now() }); this.db.saveUser(t);
-        app.chat.sendSystem(t.id, `Предупреждение: ${rs}`);
-        this.addStat("warnings"); this.log("warn", t.id, rs); this.ui.toast("Warn выдан"); this.refresh();
-      }
-      mute(h){
-        const r = this.rights(); if (!r.mute) return this.ui.toast("Нет права mute");
-        const { t, rs } = this.targetReason(); if (!t) return;
-        if (!this.canAffect(t)) return this.ui.toast("Нельзя наказать равный/высший ранг");
-        t.mutedUntil = Date.now() + h * 3600000; this.db.saveUser(t);
-        app.chat.sendSystem(t.id, `Мут на ${h}ч. Причина: ${rs}`);
-        this.addStat("mutes"); this.log("mute_"+h+"h", t.id, rs); this.refresh();
-      }
-      banToggle(){
-        const r = this.rights(); if (!r.ban) return this.ui.toast("Нет права ban");
-        const { t, rs } = this.targetReason(); if (!t) return;
-        if (!this.canAffect(t)) return this.ui.toast("Нельзя наказать равный/высший ранг");
-        const on = t.bannedUntil && t.bannedUntil > Date.now();
-        t.bannedUntil = on ? 0 : Date.now() + 3650*86400000; this.db.saveUser(t);
-        app.chat.sendSystem(t.id, on ? "Бан снят." : `Бан. Причина: ${rs}`);
-        this.addStat("bans"); this.log(on?"unban":"ban", t.id, rs); this.refresh();
-      }
-      clearMute(){
-        const r = this.rights(); if (!r.mute) return this.ui.toast("Нет права clear mute");
-        const { t, rs } = this.targetReason(); if (!t) return;
-        if (!this.canAffect(t)) return this.ui.toast("Нельзя наказать равный/высший ранг");
-        t.mutedUntil = 0; this.db.saveUser(t); app.chat.sendSystem(t.id, `Мут снят. ${rs}`); this.log("clear_mute", t.id, rs); this.refresh();
-      }
-      refresh(){ if (S.screen === "moderator") app.ui.renderScreen("moderator"); if (S.screen === "admin") app.ui.renderScreen("admin"); }
-      render(el){
-        const r=this.rights(), users=this.db.allUsers().filter(u=>u.id!==S.user.id), vio=this.db.g("violations",[]).slice(-12).reverse();
-        el.innerHTML = `<div class="grid">
-          <div class="card"><h3 class="title">Панель модератора</h3><div class="meta">Права: warn ${r.warn?"да":"нет"}, mute ${r.mute?"да":"нет"}, ban ${r.ban?"да":"нет"}.</div></div>
-          <div class="card"><h3 class="title">Управление игроками</h3>
-            <select id="modTarget">${users.map(u=>`<option value="${u.id}">${this.ui.esc(u.login)}</option>`).join("")}</select>
-            <textarea id="modReason" placeholder="Причина"></textarea>
-            <div class="grid two"><button id="wBtn" class="pri">Warn</button><button id="m1Btn" class="ghost">Мут 1ч</button><button id="m24Btn" class="ghost">Мут 24ч</button><button id="bBtn" class="danger">Бан/разбан</button><button id="cmBtn" class="ghost">Снять мут</button><button id="cardBtn" class="ghost">Карточка игрока</button></div>
-          </div>
-          <div class="card"><h3 class="title">Анти-мат</h3>${vio.map(v=>`<div class="listRow"><div><b>${this.ui.esc(v.offenderId)}</b><div class="meta">${this.ui.esc(v.text)}</div></div><span class="tag">${new Date(v.at).toLocaleTimeString("ru-RU")}</span></div>`).join("") || `<div class="meta">Нарушений нет</div>`}</div>
-        </div>`;
-        document.getElementById("wBtn").onclick=()=>this.warn();
-        document.getElementById("m1Btn").onclick=()=>this.mute(1);
-        document.getElementById("m24Btn").onclick=()=>this.mute(24);
-        document.getElementById("bBtn").onclick=()=>this.banToggle();
-        document.getElementById("cmBtn").onclick=()=>this.clearMute();
-        document.getElementById("cardBtn").onclick=()=>{ const {t}=this.targetReason(); if(!t) return; app.ui.modal("Карточка", `<div class="card"><div class="listRow"><span>ID</span><b>${app.ui.esc(t.id)}</b></div><div class="listRow"><span>Монеты</span><b>${Math.floor(t.coins)}</b></div><div class="listRow"><span>Предупреждений</span><b>${(t.warnings||[]).length}</b></div><div class="listRow"><span>Мут</span><b>${t.mutedUntil&&t.mutedUntil>Date.now()?new Date(t.mutedUntil).toLocaleString("ru-RU"):"нет"}</b></div><div class="listRow"><span>Бан</span><b>${t.bannedUntil&&t.bannedUntil>Date.now()?"активен":"нет"}</b></div></div>`); };
-      }
-    }
-
-    class Admin {
-      constructor(db,ui){ this.db=db; this.ui=ui; }
-      tgt(){ return this.db.g(`users/${document.getElementById("admTarget").value}`, null); }
-      saveT(u, action){
-        this.db.saveUser(u);
-        this.db.s(`users/${u.id}/coins`, u.coins||0); this.db.s(`users/${u.id}/rank`, u.rank||"user");
-        if (S.user.id === u.id) S.user = u;
-        app.moder.log(action, u.id, "admin_panel");
-        this.ui.toast("Игрок обновлен");
-        this.render(document.getElementById("screenHost"));
-      }
-      setRank(rank){
-        const u=this.tgt(); if(!u||u.role==="admin") return this.ui.toast("Нельзя");
-        u.role = "moderator"; u.rank = rank;
-        const rightsBy = { "ml.модер":{warn:true,mute:false,ban:false}, "модер":{warn:true,mute:true,ban:false}, "ст.модер":{warn:true,mute:true,ban:true}, "мл.админ":{warn:true,mute:true,ban:true,adminLite:true} };
-        const creds = this.db.g("moderators_credentials", {});
-        let found = false;
-        Object.values(creds).forEach(c => { if (c.userId === u.id){ c.rank = rank; c.rights = rightsBy[rank]; found = true; } });
-        if (!found) app.moder.grant(u.id, "admin_rank_set");
-        this.db.s("moderators_credentials", creds);
-        app.chat.sendSystem(u.id, `Администрация назначила вам ранг: ${rank}`);
-        this.saveT(u, "admin_set_rank_"+rank);
-      }
-      render(el){
-        if (S.user.role !== "admin") return el.innerHTML = `<div class="meta">Нет доступа</div>`;
-        const users=this.db.allUsers(), creds=Object.values(this.db.g("moderators_credentials", {})), logs=this.db.g("mod_logs",[]).slice(-20).reverse(), v=this.db.g("violations",[]).slice(-14).reverse();
-        const onlyMods = users.filter(u => u.role === "moderator");
-        const onlyUsers = users.filter(u => u.role !== "moderator" && u.role !== "admin");
-        el.innerHTML = `<div class="grid">
-          <div class="card"><h3 class="title">Админ-панель</h3>
-            <div class="grid two"><select id="grantU">${users.map(u=>`<option value="${u.id}">${this.ui.esc(u.login)}</option>`).join("")}</select><button id="grantBtn" class="pri">Выдать модератора</button></div>
-            <textarea id="bcText" placeholder="Рассылка всем игрокам"></textarea><button id="bcBtn" class="ghost">Отправить рассылку</button>
-          </div>
-          <div class="card"><h3 class="title">Управление модераторами</h3>
-            <select id="modTargetAdmin">${onlyMods.map(u=>`<option value="${u.id}">${this.ui.esc(u.login)} (${this.ui.esc(u.rank||"ml.модер")})</option>`).join("") || `<option value="">Нет модераторов</option>`}</select>
-            <div class="grid two"><button id="modToJr" class="ghost">Ранг ml.модер</button><button id="modToMid" class="ghost">Ранг модер</button><button id="modToSr" class="ghost">Ранг ст.модер</button><button id="modToMiniAdm" class="pri">Ранг мл.админ</button><button id="demoteMod" class="danger">Снять модера</button><button id="viewModLink" class="ghost">Показать привязку логина</button></div>
-          </div>
-          <div class="card"><h3 class="title">Управление обычными игроками</h3>
-            <select id="admTarget">${onlyUsers.map(u=>`<option value="${u.id}">${this.ui.esc(u.login)}</option>`).join("") || `<option value="">Нет пользователей</option>`}</select>
-            <textarea id="directSysMsg" placeholder="Личное системное сообщение игроку"></textarea>
-            <div class="grid two"><input id="coinsAmt" type="number" placeholder="Монеты"><button id="addC" class="pri">Начислить</button><button id="takeC" class="danger">Списать</button><button id="resetE" class="ghost">Энергия 100%</button><button id="clearPB" class="ghost">Снять мут/бан</button><button id="mkUser" class="ghost">Сделать игроком</button><button id="wipeW" class="danger">Очистить warn</button><button id="r1" class="ghost">ml.модер</button><button id="r2" class="ghost">модер</button><button id="r3" class="ghost">ст.модер</button><button id="r4" class="pri">мл.админ</button><button id="givePref" class="ghost">Выдать все префиксы</button><button id="giveNicks" class="ghost">Выдать все стили ника</button><button id="resetAcc" class="danger">Сбросить прогресс</button><button id="sendDirect" class="pri">Отправить системное</button></div>
-          </div>
-          <div class="card"><h3 class="title">База логинов модеров</h3>${creds.map(c=>`<div class="listRow"><span>${this.ui.esc(c.login)}</span><span class="tag">${this.ui.esc(c.password)}</span></div>`).join("") || `<div class="meta">Пусто</div>`}</div>
-          <div class="card"><h3 class="title">Анти-мат</h3>${v.map(x=>`<div class="listRow"><div><b>${this.ui.esc(x.offenderId)}</b><div class="meta">${this.ui.esc(x.text)}</div></div><span class="tag">${this.ui.esc(x.chatType)}</span></div>`).join("") || `<div class="meta">Нет нарушений</div>`}</div>
-          <div class="card"><h3 class="title">Логи</h3>${logs.map(l=>`<div class="listRow"><span>${this.ui.esc(l.action)} → ${this.ui.esc(l.targetId)}</span><span class="meta">${new Date(l.at).toLocaleString("ru-RU")}</span></div>`).join("") || `<div class="meta">Нет логов</div>`}</div>
-        </div>`;
-        document.getElementById("grantBtn").onclick=()=>app.moder.grant(document.getElementById("grantU").value,"admin_manual");
-        document.getElementById("bcBtn").onclick=()=>{ const t=this.ui.esc(document.getElementById("bcText").value.trim()); if(!t) return; this.db.allUsers().forEach(u=>app.chat.sendSystem(u.id,`Рассылка администрации: ${t}`)); app.moder.log("broadcast","all",t); this.ui.toast("Рассылка отправлена"); };
-        document.getElementById("addC").onclick=()=>{ const u=this.tgt(),a=Math.max(0,Number(document.getElementById("coinsAmt").value||0)); if(!u||!a) return this.ui.toast("Введите сумму"); u.coins=(u.coins||0)+a; app.chat.sendSystem(u.id,`Начислено ${a} монет администрацией.`); this.saveT(u,"admin_add_coins"); };
-        document.getElementById("takeC").onclick=()=>{ const u=this.tgt(),a=Math.max(0,Number(document.getElementById("coinsAmt").value||0)); if(!u||!a) return this.ui.toast("Введите сумму"); u.coins=Math.max(0,(u.coins||0)-a); app.chat.sendSystem(u.id,`Списано ${a} монет администрацией.`); this.saveT(u,"admin_take_coins"); };
-        document.getElementById("resetE").onclick=()=>{ const u=this.tgt(); if(!u) return; u.energy=u.maxEnergy; this.saveT(u,"admin_reset_energy"); };
-        document.getElementById("clearPB").onclick=()=>{ const u=this.tgt(); if(!u) return; u.mutedUntil=0; u.bannedUntil=0; app.chat.sendSystem(u.id,"Администрация сняла мут и бан."); this.saveT(u,"admin_clear_punishments"); };
-        document.getElementById("mkUser").onclick=()=>{ const u=this.tgt(); if(!u||u.role==="admin") return; u.role="user"; u.rank="user"; const c=this.db.g("moderators_credentials",{}); Object.keys(c).forEach(k=>{ if(c[k].userId===u.id) delete c[k]; }); this.db.s("moderators_credentials",c); this.saveT(u,"admin_make_user"); };
-        document.getElementById("wipeW").onclick=()=>{ const u=this.tgt(); if(!u) return; u.warnings=[]; app.chat.sendSystem(u.id,"Предупреждения очищены администрацией."); this.saveT(u,"admin_wipe_warn"); };
-        document.getElementById("r1").onclick=()=>this.setRank("ml.модер");
-        document.getElementById("r2").onclick=()=>this.setRank("модер");
-        document.getElementById("r3").onclick=()=>this.setRank("ст.модер");
-        document.getElementById("r4").onclick=()=>this.setRank("мл.админ");
-        document.getElementById("modToJr").onclick=()=>{ const e=document.getElementById("modTargetAdmin"); if(!e||!e.value) return; document.getElementById("admTarget").value=e.value; this.setRank("ml.модер"); };
-        document.getElementById("modToMid").onclick=()=>{ const e=document.getElementById("modTargetAdmin"); if(!e||!e.value) return; document.getElementById("admTarget").value=e.value; this.setRank("модер"); };
-        document.getElementById("modToSr").onclick=()=>{ const e=document.getElementById("modTargetAdmin"); if(!e||!e.value) return; document.getElementById("admTarget").value=e.value; this.setRank("ст.модер"); };
-        document.getElementById("modToMiniAdm").onclick=()=>{ const e=document.getElementById("modTargetAdmin"); if(!e||!e.value) return; document.getElementById("admTarget").value=e.value; this.setRank("мл.админ"); };
-        document.getElementById("demoteMod").onclick=()=>{ const e=document.getElementById("modTargetAdmin"); if(!e||!e.value) return; document.getElementById("admTarget").value=e.value; document.getElementById("mkUser").click(); };
-        document.getElementById("viewModLink").onclick=()=>{
-          const e=document.getElementById("modTargetAdmin"); if(!e||!e.value) return;
-          const creds=this.db.g("moderators_credentials", {});
-          const hit = Object.values(creds).find(c => c.userId === e.value);
-          if (!hit) return this.ui.toast("Привязка не найдена");
-          this.ui.modal("Привязка модер-акка", `<div class="card"><div class="listRow"><span>Игрок</span><b>${this.ui.esc(this.db.g(`users/${e.value}`,{}).login || e.value)}</b></div><div class="listRow"><span>Логин модера</span><b>${this.ui.esc(hit.login)}</b></div><div class="listRow"><span>Пароль модера</span><b>${this.ui.esc(hit.password)}</b></div><div class="listRow"><span>Ранг</span><b>${this.ui.esc(hit.rank || "ml.модер")}</b></div></div>`);
-        };
-        document.getElementById("givePref").onclick=()=>{ const u=this.tgt(); if(!u) return; u.prefixes=[...new Set([...(u.prefixes||[]), ...DATA.prefixes.map(p=>p.id), "Noob","Hacker","God"])]; u.activePrefix=u.prefixes[0]||""; app.chat.sendSystem(u.id,"Админ выдал вам все префиксы."); this.saveT(u,"admin_give_prefixes"); };
-        document.getElementById("giveNicks").onclick=()=>{ const u=this.tgt(); if(!u) return; u.nickStyles=[...new Set([...(u.nickStyles||[]), ...DATA.nicks.map(n=>n.id)])]; u.activeNickStyle=u.nickStyles[0]||""; app.chat.sendSystem(u.id,"Админ выдал вам все стили ников."); this.saveT(u,"admin_give_nicks"); };
-        document.getElementById("resetAcc").onclick=()=>{ const u=this.tgt(); if(!u||u.role==="admin") return; const base=userFactory(u.login,u.password,u.role); base.id=u.id; base.vk=u.vk; base.vkId=u.vkId; if(u.role==="moderator") base.rank=u.rank||"ml.модер"; this.saveT(base,"admin_reset_account"); };
-        document.getElementById("sendDirect").onclick=()=>{ const u=this.tgt(); const txt=this.ui.esc(document.getElementById("directSysMsg").value.trim()); if(!u||!txt) return this.ui.toast("Введите текст"); app.chat.sendSystem(u.id, txt); this.ui.toast("Сообщение отправлено"); };
+      
+      async rFriends() {
+        const box = document.getElementById("frList");
+        if (!box) return;
+        const ids = Object.keys(S.user.friends || {});
+        let html = '';
+        if (ids.length === 0) {
+          html = '<div class="meta">Пока нет друзей</div>';
+        } else {
+          for (let i = 0; i < ids.length; i++) {
+            const id = ids[i];
+            html += '<div class="listRow"><div>' + this.ui.esc(id) + '<div class="meta">🟢 онлайн</div></div><div class="row"><button class="ghost" data-pm="' + this.ui.esc(id) + '">💬</button><button class="pri" data-g="' + this.ui.esc(id) + '">🎁100</button></div></div>';
+          }
+        }
+        box.innerHTML = html;
+        
+        const pmBtns = box.querySelectorAll("[data-pm]");
+        for (let i = 0; i < pmBtns.length; i++) {
+          (function(btn) {
+            btn.onclick = function() {
+              S.chatType = "private"; 
+              S.chatId = [S.user.login, btn.dataset.pm].sort().join("__");
+              app.ui.renderScreen("chat");
+            };
+          })(pmBtns[i]);
+        }
+        
+        const giftBtns = box.querySelectorAll("[data-g]");
+        const self = this;
+        for (let i = 0; i < giftBtns.length; i++) {
+          (function(btn) {
+            btn.onclick = async function() {
+              const f = await self.db.get('users/' + btn.dataset.g, null);
+              if (!f || !await app.econ.spend(100)) return;
+              f.coins = (f.coins || 0) + 100;
+              await self.db.set('users/' + btn.dataset.g, f);
+              await app.chat.sendSystem(btn.dataset.g, S.user.login + ' отправил вам 100 монет.');
+              self.ui.toast("Подарок отправлен");
+            };
+          })(giftBtns[i]);
+        }
       }
     }
 
     class Profile {
-      constructor(db,ui){ this.db=db; this.ui=ui; }
-      render(el){
+      constructor(db, ui) { this.db = db; this.ui = ui; }
+      render(el) {
         const nx = 500 * S.user.level;
-        el.innerHTML = `<div class="grid">
-          <div class="card"><h2>${this.ui.nameBy(S.user)}</h2><div class="meta">VK: <a href="${CFG.devVk}" target="_blank" style="color:var(--c1)">id755275260</a></div>
-            <div class="listRow"><span>Роль</span><b>${this.ui.roleText(S.user)}</b></div>
-            <div class="listRow"><span>Уровень</span><b>${S.user.level}</b></div>
-            <div class="listRow"><span>XP</span><b>${Math.floor(S.user.xp)} / ${nx}</b></div>
-            <div class="listRow"><span>Сила клика</span><b>${S.user.clickPower}</b></div>
-            <button id="logoutBtn" class="danger">Выйти</button>
-          </div>
-          <div class="card"><h3 class="title">Префикс</h3><div class="tabs" id="pfList"></div></div>
-          <div class="card"><h3 class="title">Стиль ника</h3><div class="tabs" id="nkList"></div></div>
-        </div>`;
-        document.getElementById("logoutBtn").onclick = () => app.auth.logout();
-        const p = document.getElementById("pfList");
-        const myP = S.user.prefixes || [];
-        p.innerHTML = myP.length ? myP.map(x => `<button class="chip ${S.user.activePrefix===x?'active':'ghost'}" data-pf="${this.ui.esc(x)}">${this.ui.esc(x)}</button>`).join("") : `<div class="meta">У вас нет префиксов</div>`;
-        p.querySelectorAll("[data-pf]").forEach(b => b.onclick = () => { S.user.activePrefix = b.dataset.pf; this.ui.saveMe(); this.render(el); });
-        const n = document.getElementById("nkList");
-        const myN = S.user.nickStyles || [];
-        n.innerHTML = myN.length ? myN.map(x => `<button class="chip ${S.user.activeNickStyle===x?'active':'ghost'} ${x}-name" data-nk="${this.ui.esc(x)}">${this.ui.esc(x)}</button>`).join("") : `<div class="meta">У вас нет стилей ника</div>`;
-        n.querySelectorAll("[data-nk]").forEach(b => b.onclick = () => { S.user.activeNickStyle = b.dataset.nk; this.ui.saveMe(); this.render(el); });
+        let pfListHtml = '';
+        if ((S.user.prefixes || []).length === 0) {
+          pfListHtml = '<div class="meta">Нет префиксов</div>';
+        } else {
+          for (let i = 0; i < S.user.prefixes.length; i++) {
+            const x = S.user.prefixes[i];
+            pfListHtml += '<button class="chip ' + (S.user.activePrefix === x ? 'active' : 'ghost') + '" data-pf="' + this.ui.esc(x) + '">' + this.ui.esc(x) + '</button>';
+          }
+        }
+        
+        let nkListHtml = '';
+        if ((S.user.nickStyles || []).length === 0) {
+          nkListHtml = '<div class="meta">Нет стилей</div>';
+        } else {
+          for (let i = 0; i < S.user.nickStyles.length; i++) {
+            const x = S.user.nickStyles[i];
+            nkListHtml += '<button class="chip ' + (S.user.activeNickStyle === x ? 'active' : 'ghost') + ' ' + x + '-name" data-nk="' + this.ui.esc(x) + '">' + this.ui.esc(x) + '</button>';
+          }
+        }
+        
+        el.innerHTML = `
+          <div class="grid">
+            <div class="card"><h2>${this.ui.nameDisplay(S.user)}</h2>
+              <div class="listRow"><span>Роль</span><b>${this.ui.roleText(S.user)}</b></div>
+              <div class="listRow"><span>Уровень</span><b>${S.user.level}</b></div>
+              <div class="listRow"><span>XP</span><b>${Math.floor(S.user.xp)} / ${nx}</b></div>
+              <div class="listRow"><span>Монеты</span><b>${Math.floor(S.user.coins)}</b></div>
+              <button id="logoutBtn" class="danger">Выйти</button>
+            </div>
+            <div class="card"><h3 class="title">Префикс</h3>
+              <div class="tabs" id="pfList">${pfListHtml}</div>
+            </div>
+            <div class="card"><h3 class="title">Стиль ника</h3>
+              <div class="tabs" id="nkList">${nkListHtml}</div>
+            </div>
+          </div>`;
+        
+        const logoutBtn = document.getElementById("logoutBtn");
+        const self = this;
+        if (logoutBtn) logoutBtn.onclick = function() { app.auth.logout(); };
+        
+        const pfList = document.getElementById("pfList");
+        if (pfList) {
+          const pfBtns = pfList.querySelectorAll("[data-pf]");
+          for (let i = 0; i < pfBtns.length; i++) {
+            (function(btn) {
+              btn.onclick = function() {
+                S.user.activePrefix = btn.dataset.pf;
+                self.ui.saveUser();
+                self.render(el);
+              };
+            })(pfBtns[i]);
+          }
+        }
+        
+        const nkList = document.getElementById("nkList");
+        if (nkList) {
+          const nkBtns = nkList.querySelectorAll("[data-nk]");
+          for (let i = 0; i < nkBtns.length; i++) {
+            (function(btn) {
+              btn.onclick = function() {
+                S.user.activeNickStyle = btn.dataset.nk;
+                self.ui.saveUser();
+                self.render(el);
+              };
+            })(nkBtns[i]);
+          }
+        }
       }
     }
 
     class Settings {
-      constructor(db,ui){ this.db=db; this.ui=ui; }
-      render(el){
-        S.user.settings = S.user.settings || { language:"ru", notifications:true };
-        el.innerHTML = `<div class="grid">
-          <div class="card"><h3 class="title">Настройки</h3>
-            <div class="listRow"><span>Язык</span><select id="lang" style="max-width:170px"><option value="ru">Русский</option><option value="en">English</option></select></div>
-            <div class="listRow"><span>Уведомления</span><button id="notiBtn" class="ghost">${S.user.settings.notifications ? "Вкл":"Выкл"}</button></div>
-          </div>
-          <div class="card"><h3 class="title">Правила</h3><div class="meta">1) Запрещены оскорбления и мат. 2) Запрещен спам и накрутка. 3) Модератор не может выдавать наказания выше своего ранга. 4) Все действия фиксируются в логах.</div></div>
-          <div class="card"><h3 class="title">Разработчик</h3><div class="listRow"><span>VK</span><a href="${CFG.devVk}" target="_blank" style="color:var(--c1)">id755275260</a></div></div>
-        </div>`;
-        document.getElementById("lang").value = S.user.settings.language || "ru";
-        document.getElementById("lang").onchange = e => { S.user.settings.language = e.target.value; this.ui.saveMe(); this.ui.toast("Язык сохранен"); };
-        document.getElementById("notiBtn").onclick = () => { S.user.settings.notifications = !S.user.settings.notifications; this.ui.saveMe(); this.render(el); };
+      constructor(db, ui) { this.db = db; this.ui = ui; }
+      render(el) {
+        S.user.settings = S.user.settings || { language: "ru", notifications: true };
+        el.innerHTML = `
+          <div class="grid">
+            <div class="card"><h3 class="title">Настройки</h3>
+              <div class="listRow"><span>Язык</span><select id="lang"><option value="ru">Русский</option><option value="en">English</option></select></div>
+              <div class="listRow"><span>Уведомления</span><button id="notiBtn" class="ghost">${S.user.settings.notifications ? "Вкл" : "Выкл"}</button></div>
+            </div>
+            <div class="card"><h3 class="title">Правила</h3><div class="meta">1) Без мата. 2) Без спама. 3) Все действия логируются.</div></div>
+          </div>`;
+        
+        const lang = document.getElementById("lang");
+        const self = this;
+        if (lang) {
+          lang.value = S.user.settings.language;
+          lang.onchange = function(e) {
+            S.user.settings.language = e.target.value;
+            self.ui.saveUser();
+          };
+        }
+        
+        const notiBtn = document.getElementById("notiBtn");
+        if (notiBtn) {
+          notiBtn.onclick = function() {
+            S.user.settings.notifications = !S.user.settings.notifications;
+            self.ui.saveUser();
+            self.render(el);
+          };
+        }
+      }
+    }
+
+    class Moder {
+      constructor(db, ui) { this.db = db; this.ui = ui; }
+      
+      async rights() {
+        if (S.user.role === "admin") return { warn:true, mute:true, ban:true, manage:true };
+        const mods = await this.db.get("moderators_credentials", {});
+        const e = Object.values(mods || {}).find(function(m) { 
+          return m.userId === S.user.login && m.active !== false; 
+        });
+        return e ? e.rights : { warn:true, mute:false, ban:false, manage:false };
+      }
+      
+      p(rank) {
+        const ranks = { user:0, "ml.модер":1, "модер":2, "ст.модер":3, "мл.админ":4, admin:9 };
+        return ranks[rank] || 0;
+      }
+      
+      canAffect(target) {
+        if (S.user.role === "admin") return true;
+        return this.p(S.user.rank || "ml.модер") > this.p(target.rank || target.role || "user");
+      }
+      
+      async grant(login, source) {
+        source = source || "manual";
+        const u = await this.db.get('users/' + login, null);
+        if (!u) return;
+        const modLogin = "Moder_" + Math.floor(1000 + Math.random() * 9000);
+        const modPass = String(Math.floor(100000 + Math.random() * 900000));
+        u.role = "moderator";
+        if (!u.rank || u.rank === "user") u.rank = "ml.модер";
+        await this.db.set('users/' + login, u);
+        
+        const creds = await this.db.get("moderators_credentials", {});
+        creds[modLogin] = { 
+          login: modLogin, 
+          password: modPass, 
+          userId: login, 
+          rank: u.rank, 
+          rights: {warn:true, mute:false, ban:false}, 
+          source: source, 
+          active: true, 
+          createdAt: Date.now() 
+        };
+        await this.db.set("moderators_credentials", creds);
+        
+        const stats = await this.db.get('moderators_stats/' + login, null);
+        if (!stats) {
+          await this.db.set('moderators_stats/' + login, { warnings:0, mutes:0, bans:0 });
+        }
+        
+        await this.sendSystem(login, 'Вам выдана модерка. Логин: ' + modLogin + '. Пароль: ' + modPass + '. Ранг: ' + u.rank + '.');
+        await this.log("grant_mod", login, source);
+        if (S.user && S.user.login === login) S.user = JSON.parse(JSON.stringify(u));
+      }
+      
+      async addStat(field) {
+        const st = await this.db.get('moderators_stats/' + S.user.login, { warnings:0, mutes:0, bans:0 });
+        st[field] = (st[field] || 0) + 1;
+        await this.db.set('moderators_stats/' + S.user.login, st);
+        
+        const rank = S.user.rank || "ml.модер";
+        if (rank === "ml.модер" && st.warnings >= 30) {
+          await this.setRank("модер", { warn:true, mute:true, ban:false });
+        }
+        if (rank === "модер" && st.warnings >= 15 && st.mutes >= 20) {
+          await this.setRank("ст.модер", { warn:true, mute:true, ban:true });
+        }
+      }
+      
+      async setRank(rank, rights) {
+        S.user.rank = rank;
+        await this.db.set('users/' + S.user.login, S.user);
+        const creds = await this.db.get("moderators_credentials", {});
+        const keys = Object.keys(creds);
+        for (let i = 0; i < keys.length; i++) {
+          const c = creds[keys[i]];
+          if (c.userId === S.user.login) {
+            c.rank = rank;
+            c.rights = rights;
+          }
+        }
+        await this.db.set("moderators_credentials", creds);
+        this.ui.toast("Повышение: " + rank);
+      }
+      
+      async log(action, target, detail) {
+        const l = await this.db.get("mod_logs", []);
+        l.push({ 
+          id: this.db.id("log"), 
+          action: action, 
+          moderatorId: (S.user && S.user.login) || "system", 
+          targetId: target, 
+          detail: detail, 
+          at: Date.now() 
+        });
+        await this.db.set("mod_logs", l);
+      }
+      
+      async targetReason() {
+        const idEl = document.getElementById("modTarget");
+        const reasonEl = document.getElementById("modReason");
+        const id = idEl ? idEl.value : "";
+        const rs = reasonEl ? this.ui.esc(reasonEl.value.trim() || "Без причины") : "Без причины";
+        const t = await this.db.get('users/' + id, null);
+        return { t: t, rs: rs };
+      }
+      
+      async warn() {
+        const r = await this.rights();
+        if (!r.warn) return this.ui.toast("Нет права warn");
+        const { t, rs } = await this.targetReason();
+        if (!t) return;
+        if (!this.canAffect(t)) return this.ui.toast("Нельзя наказать равный/высший ранг");
+        t.warnings = t.warnings || [];
+        t.warnings.push({ by: S.user.login, reason: rs, at: Date.now() });
+        await this.db.set('users/' + t.login, t);
+        await this.sendSystem(t.login, 'Предупреждение: ' + rs);
+        await this.addStat("warnings");
+        await this.log("warn", t.login, rs);
+        this.ui.toast("Warn выдан");
+        this.refresh();
+      }
+      
+      async mute(h) {
+        const r = await this.rights();
+        if (!r.mute) return this.ui.toast("Нет права mute");
+        const { t, rs } = await this.targetReason();
+        if (!t) return;
+        if (!this.canAffect(t)) return this.ui.toast("Нельзя наказать равный/высший ранг");
+        t.mutedUntil = Date.now() + h * 3600000;
+        t.mutedBy = S.user.login;
+        await this.db.set('users/' + t.login, t);
+        await this.sendSystem(t.login, `Мут на ${h}ч. Причина: ${rs}. Выдал: ${S.user.login}`);
+        await this.addStat("mutes");
+        await this.log("mute_" + h + "h", t.login, rs);
+        this.refresh();
+      }
+      
+      async banToggle() {
+        const r = await this.rights();
+        if (!r.ban) return this.ui.toast("Нет права ban");
+        const { t, rs } = await this.targetReason();
+        if (!t) return;
+        if (!this.canAffect(t)) return this.ui.toast("Нельзя наказать равный/высший ранг");
+        const on = t.bannedUntil && t.bannedUntil > Date.now();
+        t.bannedUntil = on ? 0 : Date.now() + 3650 * 86400000;
+        t.bannedBy = S.user.login;
+        await this.db.set('users/' + t.login, t);
+        await this.sendSystem(t.login, on ? "Бан снят." : `Бан до ${new Date(t.bannedUntil).toLocaleString("ru-RU")}. Причина: ${rs}. Выдал: ${S.user.login}`);
+        await this.addStat("bans");
+        await this.log(on ? "unban" : "ban", t.login, rs);
+        this.refresh();
+      }
+      
+      async clearMute() {
+        const r = await this.rights();
+        if (!r.mute) return this.ui.toast("Нет права clear mute");
+        const { t, rs } = await this.targetReason();
+        if (!t) return;
+        if (!this.canAffect(t)) return this.ui.toast("Нельзя наказать равный/высший ранг");
+        t.mutedUntil = 0;
+        t.mutedBy = "";
+        await this.db.set('users/' + t.login, t);
+        await this.sendSystem(t.login, 'Мут снят. ' + rs);
+        await this.log("clear_mute", t.login, rs);
+        this.refresh();
+      }
+      
+      refresh() {
+        if (S.screen === "moderator") app.ui.renderScreen("moderator");
+        if (S.screen === "admin") app.ui.renderScreen("admin");
+      }
+      
+      async render(el) {
+        const r = await this.rights();
+        const allUsers = await this.db.allUsers();
+        const users = allUsers.filter(function(u) { return u.login !== S.user.login; });
+        const vio = safeArray(await this.db.get("violations", [])).slice(-12).reverse();
+        
+        let usersHtml = '';
+        for (let i = 0; i < users.length; i++) {
+          usersHtml += '<option value="' + users[i].login + '">' + this.ui.esc(users[i].login) + '</option>';
+        }
+        
+        let vioHtml = '';
+        if (vio.length === 0) {
+          vioHtml = '<div class="meta">Нарушений нет</div>';
+        } else {
+          for (let i = 0; i < vio.length; i++) {
+            const v = vio[i];
+            vioHtml += '<div class="listRow"><div><b>' + this.ui.esc(v.offenderId) + '</b><div class="meta">' + this.ui.esc(v.text) + '</div></div><span class="tag">' + new Date(v.at).toLocaleTimeString("ru-RU") + '</span></div>';
+          }
+        }
+        
+        el.innerHTML = `
+          <div class="grid">
+            <div class="card"><h3 class="title">Панель модератора</h3>
+              <div class="meta">Права: warn ${r.warn ? "да" : "нет"}, mute ${r.mute ? "да" : "нет"}, ban ${r.ban ? "да" : "нет"}.</div>
+            </div>
+            <div class="card"><h3 class="title">Управление игроками</h3>
+              <select id="modTarget">${usersHtml}</select>
+              <textarea id="modReason" placeholder="Причина"></textarea>
+              <div class="grid two">
+                <button id="wBtn" class="pri">Warn</button>
+                <button id="m1Btn" class="ghost">Мут 1ч</button>
+                <button id="m24Btn" class="ghost">Мут 24ч</button>
+                <button id="bBtn" class="danger">Бан/разбан</button>
+                <button id="cmBtn" class="ghost">Снять мут</button>
+                <button id="cardBtn" class="ghost">Карточка игрока</button>
+              </div>
+            </div>
+            <div class="card"><h3 class="title">Анти-мат</h3>${vioHtml}</div>
+          </div>`;
+        
+        const self = this;
+        
+        const wBtn = document.getElementById("wBtn");
+        if (wBtn) wBtn.onclick = function() { self.warn(); };
+        
+        const m1Btn = document.getElementById("m1Btn");
+        if (m1Btn) m1Btn.onclick = function() { self.mute(1); };
+        
+        const m24Btn = document.getElementById("m24Btn");
+        if (m24Btn) m24Btn.onclick = function() { self.mute(24); };
+        
+        const bBtn = document.getElementById("bBtn");
+        if (bBtn) bBtn.onclick = function() { self.banToggle(); };
+        
+        const cmBtn = document.getElementById("cmBtn");
+        if (cmBtn) cmBtn.onclick = function() { self.clearMute(); };
+        
+        const cardBtn = document.getElementById("cardBtn");
+        if (cardBtn) {
+          cardBtn.onclick = async function() {
+            const { t } = await self.targetReason();
+            if (!t) return;
+            const mutedText = t.mutedUntil && t.mutedUntil > Date.now() ? new Date(t.mutedUntil).toLocaleString("ru-RU") : "нет";
+            const bannedText = t.bannedUntil && t.bannedUntil > Date.now() ? "активен" : "нет";
+            self.ui.modal("Карточка", `
+              <div class="card">
+                <div class="listRow"><span>ID</span><b>${self.ui.esc(t.login)}</b></div>
+                <div class="listRow"><span>Монеты</span><b>${Math.floor(t.coins)}</b></div>
+                <div class="listRow"><span>Предупреждений</span><b>${(t.warnings || []).length}</b></div>
+                <div class="listRow"><span>Мут</span><b>${mutedText}</b></div>
+                <div class="listRow"><span>Бан</span><b>${bannedText}</b></div>
+              </div>`);
+          };
+        }
+      }
+      
+      async sendSystem(uid, txt) {
+        const p = 'private_chats/system__' + uid + '/messages';
+        await this.db.push(p, { 
+          id: this.db.id("msg"), 
+          senderId: "system", 
+          text: txt, 
+          at: Date.now(), 
+          system: true 
+        });
+        const u = await this.db.get('users/' + uid, null);
+        if (u) { 
+          u.unreadSystem = (u.unreadSystem || 0) + 1; 
+          await this.db.set('users/' + uid, u); 
+        }
+      }
+    }
+
+    class Admin {
+      constructor(db, ui) { 
+        this.db = db; 
+        this.ui = ui;
+        console.log('✅ Admin class initialized');
+      }
+      
+      async tgt() { 
+        const el = document.getElementById("admTarget");
+        return el ? this.db.get('users/' + el.value, null) : null; 
+      }
+      
+      async saveT(u, action) {
+        await this.db.set('users/' + u.login, u);
+        if (S.user && S.user.login === u.login) S.user = JSON.parse(JSON.stringify(u));
+        await app.moder.log(action, u.login, "admin_panel");
+        this.ui.toast("Игрок обновлен");
+        this.render(document.getElementById("screenHost"));
+      }
+      
+      async setRank(rank) {
+        const u = await this.tgt();
+        if (!u || u.role === "admin") return this.ui.toast("Нельзя");
+        u.role = "moderator";
+        u.rank = rank;
+        const rightsBy = { 
+          "ml.модер": {warn:true, mute:false, ban:false}, 
+          "модер": {warn:true, mute:true, ban:false}, 
+          "ст.модер": {warn:true, mute:true, ban:true}, 
+          "мл.админ": {warn:true, mute:true, ban:true, adminLite:true} 
+        };
+        const creds = await this.db.get("moderators_credentials", {});
+        let found = false;
+        const keys = Object.keys(creds);
+        for (let i = 0; i < keys.length; i++) {
+          const c = creds[keys[i]];
+          if (c.userId === u.login) {
+            c.rank = rank;
+            c.rights = rightsBy[rank];
+            found = true;
+          }
+        }
+        if (!found) await app.moder.grant(u.login, "admin_rank_set");
+        await this.db.set("moderators_credentials", creds);
+        await this.sendSystem(u.login, 'Администрация назначила вам ранг: ' + rank);
+        await this.saveT(u, "admin_set_rank_" + rank);
+      }
+      
+      async sendSystem(uid, txt) {
+        const p = 'private_chats/system__' + uid + '/messages';
+        await this.db.push(p, { 
+          id: this.db.id("msg"), 
+          senderId: "system", 
+          text: txt, 
+          at: Date.now(), 
+          system: true 
+        });
+        const u = await this.db.get('users/' + uid, null);
+        if (u) { 
+          u.unreadSystem = (u.unreadSystem || 0) + 1; 
+          await this.db.set('users/' + uid, u); 
+        }
+      }
+      
+      async render(el) {
+        console.log('🔧 Admin.render() called');
+        console.log('Current user:', S.user);
+        
+        if (!S.user) {
+          console.error('❌ No user in Admin.render');
+          el.innerHTML = '<div class="error-msg">Ошибка: пользователь не авторизован</div>';
+          return;
+        }
+        
+        if (S.user.role !== "admin") {
+          console.error('❌ User is not admin:', S.user.role);
+          el.innerHTML = '<div class="meta">Нет доступа</div>';
+          return;
+        }
+        
+        console.log('✅ Admin access granted, rendering panel...');
+        
+        try {
+          const users = await this.db.allUsers();
+          const onlyMods = users.filter(function(u) { return u.role === "moderator"; });
+          const onlyUsers = users.filter(function(u) { return u.role !== "moderator" && u.role !== "admin"; });
+          const creds = Object.values(await this.db.get("moderators_credentials", {}) || {});
+          const logs = safeArray(await this.db.get("mod_logs", [])).slice(-20).reverse();
+          const v = safeArray(await this.db.get("violations", [])).slice(-14).reverse();
+          
+          let usersSelectHtml = '';
+          for (let i = 0; i < users.length; i++) {
+            usersSelectHtml += '<option value="' + users[i].login + '">' + this.ui.esc(users[i].login) + '</option>';
+          }
+          
+          let modsSelectHtml = '';
+          if (onlyMods.length === 0) {
+            modsSelectHtml = '<option value="">Нет модераторов</option>';
+          } else {
+            for (let i = 0; i < onlyMods.length; i++) {
+              const u = onlyMods[i];
+              modsSelectHtml += '<option value="' + u.login + '">' + this.ui.esc(u.login) + ' (' + this.ui.esc(u.rank || "ml.модер") + ')</option>';
+            }
+          }
+          
+          let adminUsersSelectHtml = '';
+          if (onlyUsers.length === 0) {
+            adminUsersSelectHtml = '<option value="">Нет пользователей</option>';
+          } else {
+            for (let i = 0; i < onlyUsers.length; i++) {
+              adminUsersSelectHtml += '<option value="' + onlyUsers[i].login + '">' + this.ui.esc(onlyUsers[i].login) + '</option>';
+            }
+          }
+          
+          let credsHtml = '';
+          if (creds.length === 0) {
+            credsHtml = '<div class="meta">Пусто</div>';
+          } else {
+            for (let i = 0; i < creds.length; i++) {
+              const c = creds[i];
+              credsHtml += '<div class="listRow"><span>' + this.ui.esc(c.login) + '</span><span class="tag">' + this.ui.esc(c.password) + '</span></div>';
+            }
+          }
+          
+          let vHtml = '';
+          if (v.length === 0) {
+            vHtml = '<div class="meta">Нет нарушений</div>';
+          } else {
+            for (let i = 0; i < v.length; i++) {
+              const x = v[i];
+              vHtml += '<div class="listRow"><div><b>' + this.ui.esc(x.offenderId) + '</b><div class="meta">' + this.ui.esc(x.text) + '</div></div><span class="tag">' + this.ui.esc(x.chatType) + '</span></div>';
+            }
+          }
+          
+          let logsHtml = '';
+          if (logs.length === 0) {
+            logsHtml = '<div class="meta">Нет логов</div>';
+          } else {
+            for (let i = 0; i < logs.length; i++) {
+              const l = logs[i];
+              logsHtml += '<div class="listRow"><span>' + this.ui.esc(l.action) + ' → ' + this.ui.esc(l.targetId) + '</span><span class="meta">' + new Date(l.at).toLocaleString("ru-RU") + '</span></div>';
+            }
+          }
+          
+          el.innerHTML = `
+            <div class="grid">
+              <div class="card"><h3 class="title">Админ-панель</h3>
+                <div class="grid two">
+                  <select id="grantU">${usersSelectHtml}</select>
+                  <button id="grantBtn" class="pri">Выдать модератора</button>
+                </div>
+                <textarea id="bcText" placeholder="Рассылка всем игрокам"></textarea>
+                <button id="bcBtn" class="ghost">Отправить рассылку</button>
+              </div>
+              
+              <div class="card"><h3 class="title">Управление модераторами</h3>
+                <select id="modTargetAdmin">${modsSelectHtml}</select>
+                <div class="grid two">
+                  <button id="modToJr" class="ghost">Ранг ml.модер</button>
+                  <button id="modToMid" class="ghost">Ранг модер</button>
+                  <button id="modToSr" class="ghost">Ранг ст.модер</button>
+                  <button id="modToMiniAdm" class="pri">Ранг мл.админ</button>
+                  <button id="demoteMod" class="danger">Снять модера</button>
+                  <button id="viewModLink" class="ghost">Показать привязку логина</button>
+                </div>
+              </div>
+              
+              <div class="card"><h3 class="title">Управление обычными игроками</h3>
+                <select id="admTarget">${adminUsersSelectHtml}</select>
+                <textarea id="directSysMsg" placeholder="Личное системное сообщение игроку"></textarea>
+                <div class="grid two">
+                  <input id="coinsAmt" type="number" placeholder="Монеты">
+                  <button id="addC" class="pri">Начислить</button>
+                  <button id="takeC" class="danger">Списать</button>
+                  <button id="resetE" class="ghost">Энергия 100%</button>
+                  <button id="clearPB" class="ghost">Снять мут/бан</button>
+                  <button id="mkUser" class="ghost">Сделать игроком</button>
+                  <button id="wipeW" class="danger">Очистить warn</button>
+                  <button id="r1" class="ghost">ml.модер</button>
+                  <button id="r2" class="ghost">модер</button>
+                  <button id="r3" class="ghost">ст.модер</button>
+                  <button id="r4" class="pri">мл.админ</button>
+                  <button id="givePref" class="ghost">Выдать все префиксы</button>
+                  <button id="giveNicks" class="ghost">Выдать все стили ника</button>
+                  <button id="resetAcc" class="danger">Сбросить прогресс</button>
+                  <button id="sendDirect" class="pri">Отправить системное</button>
+                </div>
+              </div>
+              
+              <div class="card"><h3 class="title">База логинов модеров</h3>${credsHtml}</div>
+              <div class="card"><h3 class="title">Анти-мат</h3>${vHtml}</div>
+              <div class="card"><h3 class="title">Логи</h3>${logsHtml}</div>
+            </div>`;
+          
+          console.log('✅ Admin panel HTML rendered, binding events...');
+          this.bindAdminEvents();
+          console.log('✅ Admin panel fully rendered');
+        } catch(e) {
+          console.error('❌ Error in Admin.render:', e);
+          el.innerHTML = '<div class="error-msg">Ошибка рендера: ' + this.ui.esc(e.message) + '</div>';
+        }
+      }
+      
+      bindAdminEvents() {
+        const self = this;
+        
+        const grantBtn = document.getElementById("grantBtn");
+        if (grantBtn) {
+          grantBtn.onclick = function() {
+            console.log('🔘 Grant button clicked');
+            const el = document.getElementById("grantU");
+            app.moder.grant(el ? el.value : "", "admin_manual");
+          };
+        }
+        
+        const bcBtn = document.getElementById("bcBtn");
+        if (bcBtn) bcBtn.onclick = async function() {
+          const txtEl = document.getElementById("bcText");
+          const t = txtEl ? self.ui.esc(txtEl.value.trim()) : "";
+          if (!t) return;
+          const allUsers = await self.db.allUsers();
+          for (let i = 0; i < allUsers.length; i++) {
+            await self.sendSystem(allUsers[i].login, 'Рассылка администрации: ' + t);
+          }
+          await app.moder.log("broadcast", "all", t);
+          self.ui.toast("Рассылка отправлена");
+        };
+        
+        const addCBtn = document.getElementById("addC");
+        if (addCBtn) addCBtn.onclick = async function() {
+          const u = await self.tgt();
+          const amtEl = document.getElementById("coinsAmt");
+          const a = amtEl ? Math.max(0, Number(amtEl.value || 0)) : 0;
+          if (!u || !a) return self.ui.toast("Введите сумму");
+          u.coins = (u.coins || 0) + a;
+          await self.sendSystem(u.login, 'Начислено ' + a + ' монет администрацией.');
+          await self.saveT(u, "admin_add_coins");
+        };
+        
+        const takeCBtn = document.getElementById("takeC");
+        if (takeCBtn) takeCBtn.onclick = async function() {
+          const u = await self.tgt();
+          const amtEl = document.getElementById("coinsAmt");
+          const a = amtEl ? Math.max(0, Number(amtEl.value || 0)) : 0;
+          if (!u || !a) return self.ui.toast("Введите сумму");
+          u.coins = Math.max(0, (u.coins || 0) - a);
+          await self.sendSystem(u.login, 'Списано ' + a + ' монет администрацией.');
+          await self.saveT(u, "admin_take_coins");
+        };
+        
+        const resetEBtn = document.getElementById("resetE");
+        if (resetEBtn) resetEBtn.onclick = async function() {
+          const u = await self.tgt();
+          if (!u) return;
+          u.energy = u.maxEnergy;
+          await self.saveT(u, "admin_reset_energy");
+        };
+        
+        const clearPBBtn = document.getElementById("clearPB");
+        if (clearPBBtn) clearPBBtn.onclick = async function() {
+          const u = await self.tgt();
+          if (!u) return;
+          u.mutedUntil = 0; u.mutedBy = "";
+          u.bannedUntil = 0; u.bannedBy = "";
+          await self.sendSystem(u.login, "Администрация сняла мут и бан.");
+          await self.saveT(u, "admin_clear_punishments");
+        };
+        
+        const mkUserBtn = document.getElementById("mkUser");
+        if (mkUserBtn) mkUserBtn.onclick = async function() {
+          const u = await self.tgt();
+          if (!u || u.role === "admin") return;
+          u.role = "user";
+          u.rank = "user";
+          const c = await self.db.get("moderators_credentials", {});
+          const keys = Object.keys(c);
+          for (let i = 0; i < keys.length; i++) {
+            if (c[keys[i]].userId === u.login) delete c[keys[i]];
+          }
+          await self.db.set("moderators_credentials", c);
+          await self.saveT(u, "admin_make_user");
+        };
+        
+        const wipeWBtn = document.getElementById("wipeW");
+        if (wipeWBtn) wipeWBtn.onclick = async function() {
+          const u = await self.tgt();
+          if (!u) return;
+          u.warnings = [];
+          await self.sendSystem(u.login, "Предупреждения очищены администрацией.");
+          await self.saveT(u, "admin_wipe_warn");
+        };
+        
+        const r1Btn = document.getElementById("r1");
+        if (r1Btn) r1Btn.onclick = function() { self.setRank("ml.модер"); };
+        
+        const r2Btn = document.getElementById("r2");
+        if (r2Btn) r2Btn.onclick = function() { self.setRank("модер"); };
+        
+        const r3Btn = document.getElementById("r3");
+        if (r3Btn) r3Btn.onclick = function() { self.setRank("ст.модер"); };
+        
+        const r4Btn = document.getElementById("r4");
+        if (r4Btn) r4Btn.onclick = function() { self.setRank("мл.админ"); };
+        
+        const modToJrBtn = document.getElementById("modToJr");
+        if (modToJrBtn) modToJrBtn.onclick = function() { 
+          const e = document.getElementById("modTargetAdmin"); 
+          if (e && e.value) { 
+            document.getElementById("admTarget").value = e.value; 
+            self.setRank("ml.модер"); 
+          } 
+        };
+        
+        const modToMidBtn = document.getElementById("modToMid");
+        if (modToMidBtn) modToMidBtn.onclick = function() { 
+          const e = document.getElementById("modTargetAdmin"); 
+          if (e && e.value) { 
+            document.getElementById("admTarget").value = e.value; 
+            self.setRank("модер"); 
+          } 
+        };
+        
+        const modToSrBtn = document.getElementById("modToSr");
+        if (modToSrBtn) modToSrBtn.onclick = function() { 
+          const e = document.getElementById("modTargetAdmin"); 
+          if (e && e.value) { 
+            document.getElementById("admTarget").value = e.value; 
+            self.setRank("ст.модер"); 
+          } 
+        };
+        
+        const modToMiniAdmBtn = document.getElementById("modToMiniAdm");
+        if (modToMiniAdmBtn) modToMiniAdmBtn.onclick = function() { 
+          const e = document.getElementById("modTargetAdmin"); 
+          if (e && e.value) { 
+            document.getElementById("admTarget").value = e.value; 
+            self.setRank("мл.админ"); 
+          } 
+        };
+        
+        const demoteModBtn = document.getElementById("demoteMod");
+        if (demoteModBtn) demoteModBtn.onclick = function() { 
+          const e = document.getElementById("modTargetAdmin"); 
+          if (e && e.value) { 
+            document.getElementById("admTarget").value = e.value; 
+            const mkBtn = document.getElementById("mkUser");
+            if (mkBtn) mkBtn.click(); 
+          } 
+        };
+        
+        const viewModLinkBtn = document.getElementById("viewModLink");
+        if (viewModLinkBtn) viewModLinkBtn.onclick = async function() {
+          const e = document.getElementById("modTargetAdmin");
+          if (!e || !e.value) return;
+          const creds = await self.db.get("moderators_credentials", {});
+          const credsValues = Object.values(creds);
+          let hit = null;
+          for (let i = 0; i < credsValues.length; i++) {
+            if (credsValues[i].userId === e.value) {
+              hit = credsValues[i];
+              break;
+            }
+          }
+          if (!hit) return self.ui.toast("Привязка не найдена");
+          const userData = await self.db.get('users/' + e.value, {});
+          self.ui.modal("Привязка модер-акка", `
+            <div class="card">
+              <div class="listRow"><span>Игрок</span><b>${self.ui.esc(userData.login || e.value)}</b></div>
+              <div class="listRow"><span>Логин модера</span><b>${self.ui.esc(hit.login)}</b></div>
+              <div class="listRow"><span>Пароль модера</span><b>${self.ui.esc(hit.password)}</b></div>
+              <div class="listRow"><span>Ранг</span><b>${self.ui.esc(hit.rank || "ml.модер")}</b></div>
+            </div>`);
+        };
+        
+        const givePrefBtn = document.getElementById("givePref");
+        if (givePrefBtn) givePrefBtn.onclick = async function() {
+          const u = await self.tgt();
+          if (!u) return;
+          const allPrefixes = DATA.prefixes.map(function(p) { return p.id; });
+          allPrefixes.push("Noob", "Hacker", "God");
+          u.prefixes = [...new Set([...(u.prefixes || []), ...allPrefixes])];
+          u.activePrefix = u.prefixes[0] || "";
+          await self.sendSystem(u.login, "Админ выдал вам все префиксы.");
+          await self.saveT(u, "admin_give_prefixes");
+        };
+        
+        const giveNicksBtn = document.getElementById("giveNicks");
+        if (giveNicksBtn) giveNicksBtn.onclick = async function() {
+          const u = await self.tgt();
+          if (!u) return;
+          const allNicks = DATA.nicks.map(function(n) { return n.id; });
+          u.nickStyles = [...new Set([...(u.nickStyles || []), ...allNicks])];
+          u.activeNickStyle = u.nickStyles[0] || "";
+          await self.sendSystem(u.login, "Админ выдал вам все стили ников.");
+          await self.saveT(u, "admin_give_nicks");
+        };
+        
+        const resetAccBtn = document.getElementById("resetAcc");
+        if (resetAccBtn) resetAccBtn.onclick = async function() {
+          const u = await self.tgt();
+          if (!u || u.role === "admin") return;
+          const base = createUser(u.login, u.password, u.role);
+          base.id = u.id;
+          base.vk = u.vk;
+          base.vkId = u.vkId;
+          if (u.role === "moderator") base.rank = u.rank || "ml.модер";
+          await self.saveT(base, "admin_reset_account");
+        };
+        
+        const sendDirectBtn = document.getElementById("sendDirect");
+        if (sendDirectBtn) sendDirectBtn.onclick = async function() {
+          const u = await self.tgt();
+          const txtEl = document.getElementById("directSysMsg");
+          const txt = txtEl ? self.ui.esc(txtEl.value.trim()) : "";
+          if (!u || !txt) return self.ui.toast("Введите текст");
+          await self.sendSystem(u.login, txt);
+          self.ui.toast("Сообщение отправлено");
+        };
       }
     }
 
     class App {
-      constructor(){
-        this.db = new DB(CFG.pfx);
+      constructor() {
+        this.db = new FireDB();
         this.ui = new UI(this.db);
         this.auth = new Auth(this.db, this.ui);
         this.econ = new Economy(this.db, this.ui);
@@ -1211,46 +2530,84 @@ class UI
         this.shop = new Shop(this.db, this.ui);
         this.chat = new Chat(this.db, this.ui);
         this.friends = new Friends(this.db, this.ui);
-        this.moder = new Moder(this.db, this.ui);
-        this.admin = new Admin(this.db, this.ui);
         this.profile = new Profile(this.db, this.ui);
         this.settings = new Settings(this.db, this.ui);
+        this.moder = new Moder(this.db, this.ui);
+        this.admin = new Admin(this.db, this.ui);
+        console.log('✅ App classes initialized');
+        console.log('Admin instance:', this.admin);
       }
-      start(){
-        this.db.seed();
-        const old = this.db.g("app_version", null);
-        if (old && old !== CFG.v) this.ui.toast("Приложение обновлено!");
-        this.db.s("app_version", CFG.v);
-        this.auth.init();
-        S.timers.push(setInterval(() => this.econ.regen(), 1000));
-        S.timers.push(setInterval(() => this.econ.passive(), 1000));
-        S.timers.push(setInterval(() => this.ui.saveMe(), 15000));
-        window.addEventListener("beforeunload", () => this.ui.saveMe());
-        window.addEventListener("storage", e => {
-          if (!e.key || !S.user) return;
-          if (e.key === this.db.k(`users/${S.user.id}`)){
-            const f = this.db.g(`users/${S.user.id}`, null);
-            if (f){
-              S.user = { ...S.user, ...f };
-              this.ui.refreshTop();
-              const rerender = ["chat","friends","admin","moderator","profile"].indexOf(S.screen) !== -1;
-              if (rerender) this.ui.renderScreen(S.screen);
+      
+      async start() {
+        console.log('🚀 App starting...');
+        try {
+          await this.db.seed();
+          console.log('✅ Database seeded');
+          this.auth.init();
+          console.log('✅ Auth initialized');
+          const self = this;
+          S.timers.push(setInterval(function() { self.econ.regen(); }, 1000));
+          S.timers.push(setInterval(function() { self.econ.passive(); }, 1000));
+          S.timers.push(setInterval(function() { self.ui.saveUser(); }, 15000));
+          console.log('✅ Timers started');
+          
+          window.addEventListener("beforeunload", function() {
+            self.db.cleanup();
+            const keys = Object.keys(S.fbListeners);
+            for (let i = 0; i < keys.length; i++) {
+              const fn = S.fbListeners[keys[i]];
+              if (typeof fn === 'function' && S.user && S.user.login && fbDB) {
+                fbDB.ref('users/' + S.user.login).off('value', fn);
+              }
             }
+            for (let i = 0; i < S.timers.length; i++) {
+              clearInterval(S.timers[i]);
+            }
+          });
+          console.log('✅ App started successfully');
+        } catch(e) {
+          console.error('❌ App start error:', e);
+          const root = document.getElementById("root");
+          if (root) {
+            root.innerHTML = '<div class="shell auth"><div class="card"><h2>Ошибка запуска</h2><div class="error-msg">' + this.ui.esc(e.message) + '</div><div class="meta">Откройте консоль (F12) для подробностей</div></div></div>';
           }
-        });
+        }
       }
     }
 
-    function showFatal(err){
+    function showFatal(err) {
       const root = document.getElementById("root");
       if (!root) return;
-      root.innerHTML = `<section class="shell auth"><div class="card"><h2>Ошибка запуска</h2><div class="meta">Приложение не смогло инициализироваться. Обновите страницу (Ctrl+F5).</div><div class="meta" style="margin-top:8px;color:#ff9fb5">${String(err || "unknown error")}</div></div></section>`;
+      root.innerHTML = '<section class="shell auth"><div class="card"><h2>Ошибка</h2><div class="error-msg">' + err + '</div><div class="meta">Обновите страницу (Ctrl+F5)</div></div></section>';
     }
-    window.addEventListener("error", e => {
-      if (!document.getElementById("root")?.innerHTML) showFatal(e.message || "script error");
+    
+    window.addEventListener("error", function(e) {
+      console.error('Global error:', e);
+      const rootEl = document.getElementById("root");
+      if (rootEl && !rootEl.innerHTML) {
+        showFatal(e.message || "script error");
+      }
     });
-    const app = new App();
-    try { app.start(); } catch (e) { showFatal(e && e.message ? e.message : e); }
+
+    console.log('📄 DOM loaded, initializing app...');
+    let app;
+    
+    function initApp() {
+      console.log('🎯 Initializing app...');
+      try {
+        app = new App();
+        app.start();
+      } catch (e) {
+        console.error('Init error:', e);
+        showFatal(e.message || e);
+      }
+    }
+    
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+      initApp();
+    }
   </script>
 </body>
 </html>
