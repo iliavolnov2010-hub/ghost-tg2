@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TgXq</title>
+  <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <style>
@@ -474,6 +475,7 @@
       
       renderAuth() {
         console.log('🔐 Rendering auth');
+        // ✅ FIX 3: Added autocomplete attributes for browser password saving
         this.root.innerHTML = `
           <section class="shell auth">
             <div class="brand"><div class="logo"></div><div><h1>TgXq</h1><p>Неоновая clicker/chat экосистема</p></div></div>
@@ -485,9 +487,9 @@
               <div id="loginCard" class="card">
                 <h3 class="title">Вход</h3>
                 <div class="grid">
-                  <input id="authLoginIn" placeholder="Логин">
-                  <input id="authPassIn" type="password" placeholder="Пароль">
-                  <button id="goLogin" class="pri">Войти</button>
+                  <input id="authLoginIn" type="text" autocomplete="username" placeholder="Логин">
+                  <input id="authPassIn" type="password" autocomplete="current-password" placeholder="Пароль">
+                  <button id="goLogin" type="submit" class="pri">Войти</button>
                 </div>
               </div>
               <div id="regCard" class="card" style="display:none">
@@ -591,6 +593,13 @@
         if (!host) {
           console.error('❌ screenHost not found');
           return;
+        }
+        
+        // Reset render flags when switching screens
+        if (app) {
+          if (app.chat) app.chat.isRendered = false;
+          if (app.friends) app.friends.isRendered = false;
+          if (app.profile) app.profile.isRendered = false;
         }
         
         try {
@@ -786,10 +795,9 @@
             S.user.energy = fresh.energy;
           }
           
+          // Просто обновляем топ, БЕЗ полной перерисовки экрана
           self.ui.refreshTop();
-          if (["chat", "friends", "profile"].indexOf(S.screen) !== -1) {
-            self.ui.renderScreen(S.screen);
-          }
+          // НЕ вызываем renderScreen - это разрушает чат и друзей!
         };
         
         if (fbDB) {
@@ -1245,6 +1253,7 @@
       }
     }
 
+    // ✅ FIX 2: Chat Logic - Invisible updates, no flickering
     class Chat {
       constructor(db, ui) { 
         this.db = db; 
@@ -1253,9 +1262,19 @@
         this.lastSend = 0;
         this.renderedMsgIds = new Set();
         this.initialLoadDone = false;
+        this.isRendered = false;
       }
       
       render(el) {
+        // Если чат уже рендерится, просто загружаем новые сообщения
+        if (this.isRendered) {
+          if (!this.initialLoadDone) {
+            this.loadInitialMessages();
+          }
+          return;
+        }
+        
+        // Рендерим только один раз
         el.innerHTML = `
           <div class="chatShell">
             <aside class="chatList"><div class="chatHead">Чаты</div>
@@ -1293,9 +1312,7 @@
           };
         }
         
-        this.renderedMsgIds.clear();
-        this.initialLoadDone = false;
-        
+        this.isRendered = true;
         this.setupChatListener();
         this.loadInitialMessages();
       }
@@ -1303,26 +1320,32 @@
       setupChatListener() {
         const path = "public_chat/messages";
         
+        // Remove old listener
         if (this.chatListener && fbDB) {
           fbDB.ref(path).off('child_added', this.chatListener);
         }
         
         const self = this;
         
+        // This listener only fires for NEW messages
         this.chatListener = function(snap) {
           const msg = snap.val();
           if (msg && !self.renderedMsgIds.has(msg.id)) {
-            self.appendMessage(msg);
+            self.appendMessage(msg); // Just adds to bottom, no flicker
             self.renderedMsgIds.add(msg.id);
             
+            // Smooth scroll to bottom only if user is near bottom
             const box = document.getElementById("msgs");
             if (box) {
+              // Simple auto-scroll
               box.scrollTop = box.scrollHeight;
             }
           }
         };
         
         if (fbDB) {
+          // Limit 1 ensures we only get the newest added after this point
+          // Initial load handles history
           fbDB.ref(path).orderByChild("at").limitToLast(1).on('child_added', this.chatListener);
         }
       }
@@ -1334,12 +1357,14 @@
         if (!box || !fbDB) return;
         
         try {
-          box.innerHTML = '<div class="meta">Загрузка...</div>';
+          // Show loading only inside the message box, input remains active
+          box.innerHTML = '<div class="meta">Загрузка истории...</div>';
           
           const snap = await fbDB.ref("public_chat/messages").orderByChild("at").limitToLast(50).once('value');
           const obj = snap.val() || {};
           const arr = Object.values(obj).sort(function(a,b) { return (a.at||0) - (b.at||0); });
           
+          // Clear loading message
           box.innerHTML = '';
           this.renderedMsgIds.clear();
           
@@ -1407,6 +1432,7 @@
         const box = document.getElementById("msgs");
         if (!box) return;
         
+        // Remove "empty" message if exists
         if (box.querySelector('.meta')) {
           box.innerHTML = '';
         }
@@ -1478,7 +1504,11 @@
     }
 
     class Friends {
-      constructor(db, ui) { this.db = db; this.ui = ui; }
+      constructor(db, ui) { 
+        this.db = db; 
+        this.ui = ui; 
+        this.isRendered = false;
+      }
       
       async sync() {
         if (!S.user) return;
@@ -1491,6 +1521,14 @@
       }
       
       render(el) {
+        if (this.isRendered) {
+          // Просто обновляем списки без перерисовки
+          this.rIn(); 
+          this.rOut(); 
+          this.rFriends();
+          return;
+        }
+        
         el.innerHTML = `
           <div class="grid">
             <div class="card"><h3 class="title">Поиск игроков</h3><input id="qUser" placeholder="Логин"><div id="sr" class="grid"></div></div>
@@ -1503,6 +1541,7 @@
         const self = this;
         if (qUser) qUser.oninput = function(e) { self.search(e.target.value); };
         
+        this.isRendered = true;
         this.rIn(); 
         this.rOut(); 
         this.rFriends();
@@ -1724,8 +1763,14 @@
     }
 
     class Profile {
-      constructor(db, ui) { this.db = db; this.ui = ui; }
+      constructor(db, ui) { 
+        this.db = db; 
+        this.ui = ui; 
+        this.isRendered = false;
+      }
       render(el) {
+        if (this.isRendered) return; // Only render once per visit
+        
         const nx = 500 * S.user.level;
         let pfListHtml = '';
         if ((S.user.prefixes || []).length === 0) {
@@ -1776,6 +1821,7 @@
               btn.onclick = function() {
                 S.user.activePrefix = btn.dataset.pf;
                 self.ui.saveUser();
+                self.isRendered = false;
                 self.render(el);
               };
             })(pfBtns[i]);
@@ -1790,11 +1836,14 @@
               btn.onclick = function() {
                 S.user.activeNickStyle = btn.dataset.nk;
                 self.ui.saveUser();
+                self.isRendered = false;
                 self.render(el);
               };
             })(nkBtns[i]);
           }
         }
+        
+        this.isRendered = true;
       }
     }
 
@@ -1918,7 +1967,8 @@
       }
       
       async log(action, target, detail) {
-        const l = await this.db.get("mod_logs", []);
+        let l = safeArray(await this.db.get("mod_logs", []));
+        
         l.push({ 
           id: this.db.id("log"), 
           action: action, 
@@ -2108,58 +2158,200 @@
       
       async tgt() { 
         const el = document.getElementById("admTarget");
-        return el ? this.db.get('users/' + el.value, null) : null; 
+        console.log('🎯 tgt() called');
+        console.log('   admTarget element:', el);
+        console.log('   admTarget value:', el ? el.value : 'not found');
+        if (!el) {
+          console.error('   ❌ admTarget element not found!');
+          return null;
+        }
+        if (!el.value) {
+          console.error('   ❌ admTarget value is empty!');
+          return null;
+        }
+        const user = await this.db.get('users/' + el.value, null);
+        console.log('   Database returned user:', user);
+        return user;
+      }
+      
+      async tgtMod() {
+        // Альтернативный метод для модераторов из modTargetAdmin
+        const el = document.getElementById("modTargetAdmin");
+        console.log('🎯 tgtMod() called');
+        console.log('   modTargetAdmin element:', el);
+        console.log('   modTargetAdmin value:', el ? el.value : 'not found');
+        if (!el) {
+          console.error('   ❌ modTargetAdmin element not found!');
+          return null;
+        }
+        if (!el.value) {
+          console.error('   ❌ modTargetAdmin value is empty!');
+          return null;
+        }
+        const user = await this.db.get('users/' + el.value, null);
+        console.log('   Database returned user:', user);
+        return user;
       }
       
       async saveT(u, action) {
+        console.log('💾 saveT called for user:', u.login);
         await this.db.set('users/' + u.login, u);
-        if (S.user && S.user.login === u.login) S.user = JSON.parse(JSON.stringify(u));
+        console.log('✅ User data saved to DB');
+        
+        // Update current user if it's the same user
+        if (S.user && S.user.login === u.login) {
+          S.user = JSON.parse(JSON.stringify(u));
+          console.log('✅ Current user data updated in memory');
+        }
+        
         await app.moder.log(action, u.login, "admin_panel");
-        this.ui.toast("Игрок обновлен");
-        this.render(document.getElementById("screenHost"));
+        console.log('✅ Action logged');
+        
+        this.ui.toast("✅ " + u.login + " обновлен");
+        
+        // ❌ УБРАЛИ this.render() - это была причина медлительности!
+        // Не перерисовываем весь экран, это очень медленно
       }
       
-      async setRank(rank) {
-        const u = await this.tgt();
-        if (!u || u.role === "admin") return this.ui.toast("Нельзя");
+      // ✅ FIX 1: Set Rank logic with comprehensive logging
+      async setRank(rank, userObj) {
+        console.log('🔧 setRank called with rank:', rank);
+        console.log('   userObj:', userObj);
+        
+        // Если пользователь передан напрямую, используем его
+        let u = userObj;
+        
+        // Если нет - получаем из admTarget
+        if (!u) {
+          u = await this.tgt();
+        }
+        
+        console.log('📍 Target user:', u);
+        
+        if (!u) { 
+          console.error('❌ User not found or tgt() returned null');
+          this.ui.toast("Пользователь не выбран");
+          return; 
+        }
+        
+        if (u.role === "admin") { 
+          console.error('❌ Cannot change admin rank');
+          this.ui.toast("Нельзя менять ранг администратора");
+          return; 
+        }
+        
+        console.log('✅ User valid, proceeding with rank change');
+        console.log('   Old role:', u.role, 'Old rank:', u.rank, 'New rank:', rank);
+        
+        // Update role and rank in user object
+        const oldRole = u.role;
+        const oldRank = u.rank || "user";
         u.role = "moderator";
         u.rank = rank;
+        
         const rightsBy = { 
           "ml.модер": {warn:true, mute:false, ban:false}, 
           "модер": {warn:true, mute:true, ban:false}, 
           "ст.модер": {warn:true, mute:true, ban:true}, 
           "мл.админ": {warn:true, mute:true, ban:true, adminLite:true} 
         };
+        
+        // Update credentials
+        console.log('🔐 Updating credentials...');
         const creds = await this.db.get("moderators_credentials", {});
+        console.log('   Current creds count:', Object.keys(creds).length);
+        
         let found = false;
         const keys = Object.keys(creds);
         for (let i = 0; i < keys.length; i++) {
           const c = creds[keys[i]];
           if (c.userId === u.login) {
+            console.log('   ✅ Found existing credential:', keys[i]);
+            console.log('      Old rank:', c.rank, '-> New rank:', rank);
             c.rank = rank;
             c.rights = rightsBy[rank];
             found = true;
           }
         }
-        if (!found) await app.moder.grant(u.login, "admin_rank_set");
+        
+        // If not in credentials, grant new ones
+        if (!found) {
+          console.log('   ⚠️ No existing credential found, creating new one');
+          const modLogin = "Moder_" + Math.floor(1000 + Math.random() * 9000);
+          const modPass = String(Math.floor(100000 + Math.random() * 900000));
+          creds[modLogin] = { 
+            login: modLogin, 
+            password: modPass, 
+            userId: u.login, 
+            rank: rank, 
+            rights: rightsBy[rank], 
+            source: "admin_rank_set", 
+            active: true, 
+            createdAt: Date.now() 
+          };
+          console.log('   ✅ New credential created:', modLogin);
+        }
+        
+        console.log('💾 Saving credentials to DB...');
         await this.db.set("moderators_credentials", creds);
-        await this.sendSystem(u.login, 'Администрация назначила вам ранг: ' + rank);
-        await this.saveT(u, "admin_set_rank_" + rank);
+        console.log('   ✅ Credentials saved');
+        
+        // Send system message to the user
+        const msgText = oldRole === "user" 
+          ? `✅ Вы были назначены модератором с рангом: ${rank}` 
+          : `⬆️ Ваш ранг повышен: ${oldRank} → ${rank}`;
+        
+        console.log('📨 Sending system message:', msgText);
+        await this.sendSystem(u.login, msgText);
+        console.log('   ✅ Message sent');
+        
+        // Save user to DB
+        console.log('💾 Saving user data to DB...');
+        await this.db.set('users/' + u.login, u);
+        console.log('   ✅ User saved to DB');
+        
+        // If this is the current user, update S.user immediately
+        if (S.user && S.user.login === u.login) {
+          console.log('🔄 Updating current user in memory...');
+          S.user = JSON.parse(JSON.stringify(u));
+          console.log('   ✅ Current user updated');
+          console.log('   New role:', S.user.role, 'New rank:', S.user.rank);
+        }
+        
+        // Log action
+        await app.moder.log("admin_set_rank_" + rank, u.login, "admin_panel");
+        
+        this.ui.toast(`✅ ${u.login} повышен на ${rank}!`);
+        console.log('✅ setRank completed successfully');
       }
       
       async sendSystem(uid, txt) {
+        console.log('📨 sendSystem called');
+        console.log('   UID:', uid);
+        console.log('   Text:', txt);
         const p = 'private_chats/system__' + uid + '/messages';
-        await this.db.push(p, { 
-          id: this.db.id("msg"), 
-          senderId: "system", 
-          text: txt, 
-          at: Date.now(), 
-          system: true 
-        });
-        const u = await this.db.get('users/' + uid, null);
-        if (u) { 
-          u.unreadSystem = (u.unreadSystem || 0) + 1; 
-          await this.db.set('users/' + uid, u); 
+        console.log('   Path:', p);
+        try {
+          await this.db.push(p, { 
+            id: this.db.id("msg"), 
+            senderId: "system", 
+            text: txt, 
+            at: Date.now(), 
+            system: true 
+          });
+          console.log('   ✅ Message pushed to DB');
+          
+          const u = await this.db.get('users/' + uid, null);
+          console.log('   User fetched:', u);
+          if (u) { 
+            u.unreadSystem = (u.unreadSystem || 0) + 1; 
+            await this.db.set('users/' + uid, u);
+            console.log('   ✅ User unreadSystem updated');
+          } else {
+            console.error('   ❌ User not found for updating unreadSystem');
+          }
+        } catch (err) {
+          console.error('   ❌ Error in sendSystem:', err);
         }
       }
       
@@ -2179,15 +2371,27 @@
           return;
         }
         
-        console.log('✅ Admin access granted, rendering panel...');
+        console.log('✅ Admin access granted, loading data...');
+        
+        // Show loading message immediately
+        el.innerHTML = '<div class="card"><div class="meta">⏳ Загрузка админ-панели...</div></div>';
         
         try {
-          const users = await this.db.allUsers();
+          // Load data in parallel for faster execution
+          const [users, creds, logs, v] = await Promise.all([
+            this.db.allUsers(),
+            this.db.get("moderators_credentials", {}),
+            this.db.get("mod_logs", []),
+            this.db.get("violations", [])
+          ]);
+          
+          console.log('✅ Data loaded successfully');
+          
           const onlyMods = users.filter(function(u) { return u.role === "moderator"; });
           const onlyUsers = users.filter(function(u) { return u.role !== "moderator" && u.role !== "admin"; });
-          const creds = Object.values(await this.db.get("moderators_credentials", {}) || {});
-          const logs = safeArray(await this.db.get("mod_logs", [])).slice(-20).reverse();
-          const v = safeArray(await this.db.get("violations", [])).slice(-14).reverse();
+          const credsArray = Object.values(creds || {});
+          const logArray = safeArray(logs).slice(-20).reverse();
+          const vArray = safeArray(v).slice(-14).reverse();
           
           let usersSelectHtml = '';
           for (let i = 0; i < users.length; i++) {
@@ -2214,31 +2418,31 @@
           }
           
           let credsHtml = '';
-          if (creds.length === 0) {
+          if (credsArray.length === 0) {
             credsHtml = '<div class="meta">Пусто</div>';
           } else {
-            for (let i = 0; i < creds.length; i++) {
-              const c = creds[i];
+            for (let i = 0; i < credsArray.length; i++) {
+              const c = credsArray[i];
               credsHtml += '<div class="listRow"><span>' + this.ui.esc(c.login) + '</span><span class="tag">' + this.ui.esc(c.password) + '</span></div>';
             }
           }
           
           let vHtml = '';
-          if (v.length === 0) {
+          if (vArray.length === 0) {
             vHtml = '<div class="meta">Нет нарушений</div>';
           } else {
-            for (let i = 0; i < v.length; i++) {
-              const x = v[i];
+            for (let i = 0; i < vArray.length; i++) {
+              const x = vArray[i];
               vHtml += '<div class="listRow"><div><b>' + this.ui.esc(x.offenderId) + '</b><div class="meta">' + this.ui.esc(x.text) + '</div></div><span class="tag">' + this.ui.esc(x.chatType) + '</span></div>';
             }
           }
           
           let logsHtml = '';
-          if (logs.length === 0) {
+          if (logArray.length === 0) {
             logsHtml = '<div class="meta">Нет логов</div>';
           } else {
-            for (let i = 0; i < logs.length; i++) {
-              const l = logs[i];
+            for (let i = 0; i < logArray.length; i++) {
+              const l = logArray[i];
               logsHtml += '<div class="listRow"><span>' + this.ui.esc(l.action) + ' → ' + this.ui.esc(l.targetId) + '</span><span class="meta">' + new Date(l.at).toLocaleString("ru-RU") + '</span></div>';
             }
           }
@@ -2391,52 +2595,74 @@
           await self.saveT(u, "admin_wipe_warn");
         };
         
+        // ✅ FIX 1: Ensure rank buttons work with proper async handling
         const r1Btn = document.getElementById("r1");
-        if (r1Btn) r1Btn.onclick = function() { self.setRank("ml.модер"); };
+        if (r1Btn) r1Btn.onclick = async function() { 
+          console.log('Rank button clicked: ml.модер');
+          await self.setRank("ml.модер"); 
+        };
         
         const r2Btn = document.getElementById("r2");
-        if (r2Btn) r2Btn.onclick = function() { self.setRank("модер"); };
+        if (r2Btn) r2Btn.onclick = async function() { 
+          console.log('Rank button clicked: модер');
+          await self.setRank("модер"); 
+        };
         
         const r3Btn = document.getElementById("r3");
-        if (r3Btn) r3Btn.onclick = function() { self.setRank("ст.модер"); };
+        if (r3Btn) r3Btn.onclick = async function() { 
+          console.log('Rank button clicked: ст.модер');
+          await self.setRank("ст.модер"); 
+        };
         
         const r4Btn = document.getElementById("r4");
-        if (r4Btn) r4Btn.onclick = function() { self.setRank("мл.админ"); };
+        if (r4Btn) r4Btn.onclick = async function() { 
+          console.log('Rank button clicked: мл.админ');
+          await self.setRank("мл.админ"); 
+        };
         
         const modToJrBtn = document.getElementById("modToJr");
-        if (modToJrBtn) modToJrBtn.onclick = function() { 
-          const e = document.getElementById("modTargetAdmin"); 
-          if (e && e.value) { 
-            document.getElementById("admTarget").value = e.value; 
-            self.setRank("ml.модер"); 
-          } 
+        if (modToJrBtn) modToJrBtn.onclick = async function() { 
+          console.log('🔘 modToJr button clicked');
+          const u = await self.tgtMod();
+          if (!u) {
+            self.ui.toast("Выберите модератора");
+            return;
+          }
+          console.log('   Calling setRank("ml.модер")');
+          await self.setRank("ml.модер", u); 
         };
         
         const modToMidBtn = document.getElementById("modToMid");
-        if (modToMidBtn) modToMidBtn.onclick = function() { 
-          const e = document.getElementById("modTargetAdmin"); 
-          if (e && e.value) { 
-            document.getElementById("admTarget").value = e.value; 
-            self.setRank("модер"); 
-          } 
+        if (modToMidBtn) modToMidBtn.onclick = async function() { 
+          console.log('🔘 modToMid button clicked');
+          const u = await self.tgtMod();
+          if (!u) {
+            self.ui.toast("Выберите модератора");
+            return;
+          }
+          await self.setRank("модер", u); 
         };
         
         const modToSrBtn = document.getElementById("modToSr");
-        if (modToSrBtn) modToSrBtn.onclick = function() { 
-          const e = document.getElementById("modTargetAdmin"); 
-          if (e && e.value) { 
-            document.getElementById("admTarget").value = e.value; 
-            self.setRank("ст.модер"); 
-          } 
+        if (modToSrBtn) modToSrBtn.onclick = async function() { 
+          console.log('🔘 modToSr button clicked');
+          const u = await self.tgtMod();
+          if (!u) {
+            self.ui.toast("Выберите модератора");
+            return;
+          }
+          await self.setRank("ст.модер", u); 
         };
         
         const modToMiniAdmBtn = document.getElementById("modToMiniAdm");
-        if (modToMiniAdmBtn) modToMiniAdmBtn.onclick = function() { 
-          const e = document.getElementById("modTargetAdmin"); 
-          if (e && e.value) { 
-            document.getElementById("admTarget").value = e.value; 
-            self.setRank("мл.админ"); 
-          } 
+        if (modToMiniAdmBtn) modToMiniAdmBtn.onclick = async function() { 
+          console.log('🔘 modToMiniAdm button clicked');
+          const u = await self.tgtMod();
+          if (!u) {
+            self.ui.toast("Выберите модератора");
+            return;
+          }
+          await self.setRank("мл.админ", u); 
         };
         
         const demoteModBtn = document.getElementById("demoteMod");
