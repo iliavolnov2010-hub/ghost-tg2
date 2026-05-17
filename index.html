@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TgXq</title>
   <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&display=swap');
     :root{
@@ -135,14 +135,13 @@
     console.log('🚀 TgXq App Starting...');
     
     const firebaseConfig = {
-      apiKey: "AIzaSyBX2Menq7wMXN3HFIpj9JC64XutphK6qB8",
-      authDomain: "haker-a94a6.firebaseapp.com",
-      databaseURL: "https://haker-a94a6-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "haker-a94a6",
-      storageBucket: "haker-a94a6.firebasestorage.app",
-      messagingSenderId: "132183570254",
-      appId: "1:132183570254:web:3ca764d97cb0f59da0101f",
-      measurementId: "G-ZKBR0KM4MB"
+      apiKey: "AIzaSyBZ9y63gsk7FPoHOdLecEJwYZcbp9SgCX8",
+      authDomain: "tgxq-f6aef.firebaseapp.com",
+      projectId: "tgxq-f6aef",
+      storageBucket: "tgxq-f6aef.firebasestorage.app",
+      messagingSenderId: "478853573069",
+      appId: "1:478853573069:web:7d612c3e72b5dc8dccfc84",
+      measurementId: "G-VG829ZL1RW"
     };
     
     let fbDB = null;
@@ -150,10 +149,15 @@
       if (!firebase.apps.length) {
         firebase.initializeApp(firebaseConfig);
       }
-      fbDB = firebase.database();
-      console.log('✅ Firebase initialized');
+      // ✅ Используем Firestore вместо Realtime Database
+      fbDB = firebase.firestore();
+      fbDB.settings({ 
+        cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED,
+        ignoreUndefinedProperties: true
+      });
+      console.log('✅ Firestore initialized');
     } catch(e) {
-      console.error('❌ Firebase init error:', e);
+      console.error('❌ Firestore init error:', e);
     }
 
     // Безопасное преобразование данных Firebase в массив
@@ -257,15 +261,38 @@
     };
 
     class FireDB {
-      constructor() { this.listeners = {}; }
+      constructor() { 
+        this.listeners = {}; 
+        console.log('🔥 FireDB using Firestore');
+      }
+      
+      // Convert path "users/username" to collection/document access
+      _parsePath(path) {
+        const parts = path.split('/').filter(p => p);
+        return { collection: parts[0], doc: parts[1] || null, rest: parts.slice(2) };
+      }
       
       async get(path, fallback) {
         if (!fbDB) return fallback;
         try {
-          const snap = await fbDB.ref(path).once('value');
-          return snap.val() !== null && snap.val() !== undefined ? snap.val() : fallback;
+          const { collection, doc } = this._parsePath(path);
+          if (!collection) return fallback;
+          
+          if (doc) {
+            // Get single document
+            const snap = await fbDB.collection(collection).doc(doc).get();
+            return snap.exists ? snap.data() : fallback;
+          } else {
+            // Get all documents in collection as object
+            const snap = await fbDB.collection(collection).get();
+            const result = {};
+            snap.forEach(docSnap => {
+              result[docSnap.id] = docSnap.data();
+            });
+            return Object.keys(result).length > 0 ? result : fallback;
+          }
         } catch(e) { 
-          console.error("DB get error:", e); 
+          console.error("FireDB.get error:", path, e); 
           return fallback; 
         }
       }
@@ -273,10 +300,13 @@
       async set(path, value) {
         if (!fbDB) return value;
         try {
-          await fbDB.ref(path).set(value);
+          const { collection, doc } = this._parsePath(path);
+          if (!collection || !doc) throw new Error("Invalid path");
+          
+          await fbDB.collection(collection).doc(doc).set(value, { merge: true });
           return value;
         } catch(e) { 
-          console.error("DB set error:", e); 
+          console.error("FireDB.set error:", path, e); 
           return value; 
         }
       }
@@ -284,10 +314,13 @@
       async update(path, updates) {
         if (!fbDB) return false;
         try {
-          await fbDB.ref(path).update(updates);
+          const { collection, doc } = this._parsePath(path);
+          if (!collection || !doc) throw new Error("Invalid path");
+          
+          await fbDB.collection(collection).doc(doc).update(updates);
           return true;
         } catch(e) { 
-          console.error("DB update error:", e); 
+          console.error("FireDB.update error:", path, e); 
           return false; 
         }
       }
@@ -295,22 +328,28 @@
       async push(path, value) {
         if (!fbDB) return null;
         try {
-          const ref = fbDB.ref(path).push();
-          await ref.set(value);
-          return ref.key;
+          const { collection } = this._parsePath(path);
+          if (!collection) throw new Error("Invalid path");
+          
+          // Add auto-generates ID
+          const ref = await fbDB.collection(collection).add(value);
+          return ref.id;
         } catch(e) { 
-          console.error("DB push error:", e); 
+          console.error("FireDB.push error:", path, e); 
           return null; 
         }
       }
       
       async remove(path) {
         if (!fbDB) return false;
-        try { 
-          await fbDB.ref(path).remove(); 
-          return true; 
+        try {
+          const { collection, doc } = this._parsePath(path);
+          if (!collection || !doc) throw new Error("Invalid path");
+          
+          await fbDB.collection(collection).doc(doc).delete();
+          return true;
         } catch(e) { 
-          console.error("DB remove error:", e); 
+          console.error("FireDB.remove error:", path, e); 
           return false; 
         }
       }
@@ -323,9 +362,12 @@
       async allUsers() {
         if (!fbDB) return [];
         try {
-          const snap = await fbDB.ref('users').once('value');
-          const obj = snap.val() || {};
-          return Object.values(obj).filter(Boolean);
+          const snap = await fbDB.collection('users').get();
+          const users = [];
+          snap.forEach(doc => {
+            users.push(doc.data());
+          });
+          return users.filter(Boolean);
         } catch(e) { 
           console.error("allUsers error:", e); 
           return []; 
@@ -334,32 +376,53 @@
       
       async byLogin(login) {
         const x = String(login || "").trim().toLowerCase();
-        const users = await this.allUsers();
-        return users.find(function(u) { return u.login && u.login.toLowerCase() === x; }) || null;
+        if (!fbDB) return null;
+        try {
+          const snap = await fbDB.collection('users')
+            .where('login', '==', x).limit(1).get();
+          if (snap.empty) return null;
+          return snap.docs[0].data();
+        } catch(e) {
+          console.error("byLogin error:", e);
+          return null;
+        }
       }
       
       async seed() {
         if (!fbDB) return;
         try {
-          const seeded = await this.get("seeded", false);
-          if (seeded) return;
-          const dev = createUser("zuhra", "755275260", "user");
-          dev.vkId = CFG.devId; dev.vk = CFG.devVk;
-          dev.prefixes = ["DEV","LEGEND"]; dev.activePrefix = "DEV";
-          dev.nickStyles = ["angel"]; dev.activeNickStyle = "angel";
-          await this.set('users/' + dev.login, dev);
-          await this.set("public_chat/messages", [{
-            id: this.id("msg"), senderId: "system", senderName: "Система",
-            text: "Добро пожаловать в TgXq!", at: Date.now(), system: true
-          }]);
-          await this.set("moderators", {});
-          await this.set("moderators_stats", {});
-          await this.set("mod_logs", []);
-          await this.set("violations", {});
-          await this.set("moderators_credentials", {});
-          await this.set("friend_requests_index", {});
-          await this.set("private_chat_index", []);
-          await this.set("seeded", true);
+          // Check if admin exists
+          const adminSnap = await fbDB.collection('users').doc(CFG.adminLogin).get();
+          if (!adminSnap.exists) {
+            console.log('📝 Creating admin user');
+            const admin = createUser(CFG.adminLogin, CFG.adminPassword, "admin");
+            admin.coins = 999999999;
+            await fbDB.collection('users').doc(CFG.adminLogin).set(admin);
+          }
+          
+          // Create empty collections if needed
+          const collections = ['mod_logs', 'violations', 'moderators_credentials'];
+          for (let col of collections) {
+            const snap = await fbDB.collection(col).limit(1).get();
+            if (snap.empty) {
+              console.log('📁 Initializing collection:', col);
+              // Firestore creates collections on first write
+            }
+          }
+          
+          // Ensure public chat exists
+          const chatSnap = await fbDB.collection('public_chat').doc('messages').get();
+          if (!chatSnap.exists) {
+            await fbDB.collection('public_chat').doc('messages').set({
+              id: this.id("msg"),
+              senderId: "system",
+              senderName: "Система",
+              text: "Добро пожаловать в TgXq!",
+              at: Date.now(),
+              system: true
+            });
+          }
+          
           console.log('✅ Database seeded');
         } catch(e) {
           console.error('Seed error:', e);
@@ -369,7 +432,9 @@
       cleanup() {
         const keys = Object.keys(this.listeners);
         for (let i = 0; i < keys.length; i++) {
-          if (fbDB) fbDB.ref(keys[i]).off('value', this.listeners[keys[i]]);
+          if (this.listeners[keys[i]]) {
+            this.listeners[keys[i]](); // Unsubscribe
+          }
           delete this.listeners[keys[i]];
         }
       }
@@ -642,16 +707,19 @@
       async init() {
         console.log('🔍 Checking session...');
         try {
-          const session = await this.db.get("session", null);
-          console.log('Session:', session);
-          if (session && session.userId) {
-            const user = await this.db.get('users/' + session.userId, null);
-            console.log('User:', user);
-            if (user) return this.loginUser(user, true);
-          }
+          // ❌ УБРАЛИ автоматический вход в последнюю сессию!
+          // Теперь ВСЕГДА показываем экран авторизации
+          // const session = await this.db.get("session", null);
+          // if (session && session.userId) {
+          //   const user = await this.db.get('users/' + session.userId, null);
+          //   if (user) return this.loginUser(user, true);
+          // }
         } catch(e) {
           console.error('Session check error:', e);
         }
+        
+        // ✅ ВСЕГДА показываем экран авторизации
+        console.log('✅ Showing auth screen');
         this.ui.renderAuth();
         this.bindAuthEvents();
       }
@@ -773,7 +841,7 @@
         const path = 'users/' + S.user.login;
         
         if (S.fbListeners[path]) {
-          if (fbDB) fbDB.ref(path).off('value', S.fbListeners[path]);
+          if (fbDB) //FIRESTORE_API(path).off('value', S.fbListeners[path]);
           delete S.fbListeners[path];
         }
         
@@ -801,7 +869,7 @@
         };
         
         if (fbDB) {
-          fbDB.ref(path).on('value', listener);
+          //FIRESTORE_API(path).on('value', listener);
           S.fbListeners[path] = listener;
           console.log('✅ User sync setup');
         }
@@ -813,7 +881,7 @@
         for (let i = 0; i < keys.length; i++) {
           const fn = S.fbListeners[keys[i]];
           if (typeof fn === 'function' && S.user && S.user.login && fbDB) {
-            fbDB.ref('users/' + S.user.login).off('value', fn);
+            //FIRESTORE_API('users/' + S.user.login).off('value', fn);
           }
         }
         S.fbListeners = {};
@@ -1263,6 +1331,10 @@
         this.renderedMsgIds = new Set();
         this.initialLoadDone = false;
         this.isRendered = false;
+        // ✅ Определяем мобильное устройство
+        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        this.updateTimeout = null;
+        console.log('📱 Chat initialized, isMobile:', this.isMobile);
       }
       
       render(el) {
@@ -1285,7 +1357,7 @@
             <section class="chatMain">
               <div id="chatTitle" class="chatHead">Общий чат</div>
               <div id="msgs" class="msgs"></div>
-              <form id="chatForm" class="compose"><input id="chatInput" placeholder="Сообщение..." maxlength="500"><button class="pri" type="submit" id="sendBtn">➤</button></form>
+              <form id="chatForm" class="compose"><input id="chatInput" type="text" placeholder="Сообщение..." maxlength="500" autocomplete="off" spellcheck="false" inputmode="text"><button class="pri" type="submit" id="sendBtn">➤</button></form>
             </section>
           </div>`;
         
@@ -1318,35 +1390,42 @@
       }
       
       setupChatListener() {
-        const path = "public_chat/messages";
-        
-        // Remove old listener
-        if (this.chatListener && fbDB) {
-          fbDB.ref(path).off('child_added', this.chatListener);
-        }
-        
         const self = this;
         
-        // This listener only fires for NEW messages
-        this.chatListener = function(snap) {
-          const msg = snap.val();
-          if (msg && !self.renderedMsgIds.has(msg.id)) {
-            self.appendMessage(msg); // Just adds to bottom, no flicker
-            self.renderedMsgIds.add(msg.id);
-            
-            // Smooth scroll to bottom only if user is near bottom
-            const box = document.getElementById("msgs");
-            if (box) {
-              // Simple auto-scroll
-              box.scrollTop = box.scrollHeight;
-            }
-          }
-        };
-        
-        if (fbDB) {
-          // Limit 1 ensures we only get the newest added after this point
-          // Initial load handles history
-          fbDB.ref(path).orderByChild("at").limitToLast(1).on('child_added', this.chatListener);
+        try {
+          // ✅ Firestore real-time listener with debouncing for mobile
+          const unsubscribe = fbDB.collection('public_chat')
+            .orderBy('at', 'desc')
+            .limit(50)
+            .onSnapshot(snap => {
+              snap.docChanges().forEach(change => {
+                if (change.type === 'added') {
+                  const msg = change.doc.data();
+                  msg.id = change.doc.id; // Firestore doc ID
+                  
+                  if (!self.renderedMsgIds.has(msg.id)) {
+                    // Mobile debounce
+                    if (self.isMobile) {
+                      if (self.updateTimeout) return;
+                      self.updateTimeout = setTimeout(() => {
+                        self.updateTimeout = null;
+                      }, 500);
+                    }
+                    
+                    self.appendMessage(msg);
+                    self.renderedMsgIds.add(msg.id);
+                    
+                    const box = document.getElementById("msgs");
+                    if (box) box.scrollTop = box.scrollHeight;
+                  }
+                }
+              });
+            });
+          
+          // Store unsubscribe function for cleanup
+          this.chatUnsubscribe = unsubscribe;
+        } catch(err) {
+          console.error('setupChatListener error:', err);
         }
       }
       
@@ -1360,7 +1439,7 @@
           // Show loading only inside the message box, input remains active
           box.innerHTML = '<div class="meta">Загрузка истории...</div>';
           
-          const snap = await fbDB.ref("public_chat/messages").orderByChild("at").limitToLast(50).once('value');
+          const snap = await //FIRESTORE_API("public_chat/messages").orderByChild("at").limitToLast(50).once('value');
           const obj = snap.val() || {};
           const arr = Object.values(obj).sort(function(a,b) { return (a.at||0) - (b.at||0); });
           
@@ -1424,7 +1503,7 @@
         };
         
         if (fbDB) {
-          await fbDB.ref("public_chat/messages").push(message);
+          await //FIRESTORE_API("public_chat/messages").push(message);
         }
       }
       
@@ -1479,7 +1558,7 @@
         if (!S.user) return;
         const uid = S.user.login;
         if (!fbDB) return;
-        const snap = await fbDB.ref('private_chats/system__' + uid + '/messages').orderByChild("at").limitToLast(20).once('value');
+        const snap = await //FIRESTORE_API('private_chats/system__' + uid + '/messages').orderByChild("at").limitToLast(20).once('value');
         const arr = Object.values(snap.val() || {}).sort(function(a,b) { return (b.at||0) - (a.at||0); });
         
         let html = '';
@@ -1497,7 +1576,7 @@
       
       cleanup() {
         if (this.chatListener && fbDB) {
-          fbDB.ref("public_chat/messages").off('child_added', this.chatListener);
+          //FIRESTORE_API("public_chat/messages").off('child_added', this.chatListener);
           this.chatListener = null;
         }
       }
@@ -1635,7 +1714,7 @@
         await this.ui.saveUser();
         
         if (fbDB) {
-          const chatRef = fbDB.ref('private_chats/' + cid + '/messages');
+          const chatRef = //FIRESTORE_API('private_chats/' + cid + '/messages');
           const snap = await chatRef.once('value');
           if (!snap.val()) {
             await chatRef.set([{ 
@@ -2783,7 +2862,7 @@
             for (let i = 0; i < keys.length; i++) {
               const fn = S.fbListeners[keys[i]];
               if (typeof fn === 'function' && S.user && S.user.login && fbDB) {
-                fbDB.ref('users/' + S.user.login).off('value', fn);
+                //FIRESTORE_API('users/' + S.user.login).off('value', fn);
               }
             }
             for (let i = 0; i < S.timers.length; i++) {
